@@ -1,0 +1,723 @@
+from __future__ import annotations
+
+import asyncio
+import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import structlog
+from redis.asyncio import Redis
+
+from actrone_memory.config import MemoryConfig
+from actrone_memory.exceptions import ConfigurationError, TokenBudgetError, ValidationError
+from actrone_memory.l1.redis_store import RedisStore
+from actrone_memory.l2.embedder import CachedEmbedder, Embedder, LocalEmbedder, OpenAIEmbedder
+from actrone_memory.l2.qdrant_store import QdrantStore
+from actrone_memory.metrics import (
+    background_task_failed_total,
+    background_task_in_flight,
+)
+from actrone_memory.models import MemoryEntry, RetrievedContext, SessionMetadata, ToolResult, Turn
+
+log = structlog.get_logger(__name__)
+
+# Input length limits enforced at the public API boundary.
+_MAX_ID_LEN = 256
+_MAX_MESSAGE_LEN = 100_000
+_MAX_CONTENT_LEN = 100_000
+_MAX_QUERY_LEN = 10_000
+_MAX_TAGS = 50
+
+
+def _validate_id(value: str, field: str) -> None:
+    if not value or not value.strip():
+        raise ValidationError(field, "must not be empty")
+    if len(value) > _MAX_ID_LEN:
+        raise ValidationError(field, f"must be ≤ {_MAX_ID_LEN} characters")
+
+
+def _validate_text(value: str, field: str, max_len: int) -> None:
+    if len(value) > max_len:
+        raise ValidationError(field, f"must be ≤ {max_len} characters")
+
+
+class MemoryManager:
+    """Two-tier persistent agent memory: Redis L1 (hot) + Qdrant L2 (cold semantic).
+
+    Do not instantiate directly. Use ``MemoryManager.create()`` or the
+    ``create_memory_manager()`` context manager.
+
+    Usage::
+
+        async with MemoryManager.create() as mm:
+            await mm.store_turn(agent_id, session_id, user_msg, assistant_msg)
+            ctx = await mm.retrieve_context(agent_id, session_id, query, token_budget=4096)
+    """
+
+    def __init__(
+        self,
+        l1: RedisStore,
+        l2: QdrantStore,
+        embedder: Embedder,
+        config: MemoryConfig,
+        summariser: _Summariser | None = None,
+    ) -> None:
+        self._l1 = l1
+        self._l2 = l2
+        self._embedder = embedder
+        self._cfg = config
+        self._summariser = summariser
+        # Strong references to background tasks. Without these, asyncio's GC
+        # may collect the underlying task object mid-execution and silently
+        # drop the work. close() drains this set before shutting down stores.
+        self._background_tasks: set[asyncio.Task[None]] = set()
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    async def store_turn(
+        self,
+        agent_id: str,
+        session_id: str,
+        user_message: str,
+        assistant_message: str,
+        tool_results: list[ToolResult] | None = None,
+    ) -> str:
+        """Persist a conversation turn to Redis L1.
+
+        Also triggers background summarisation to Qdrant L2 once the session
+        reaches ``summarise_after_turns`` turns.
+
+        Args:
+            agent_id: Unique identifier for the agent (e.g. ``"support-bot"``).
+            session_id: Unique identifier for the conversation session.
+            user_message: The user's raw message text.
+            assistant_message: The agent's response text.
+            tool_results: Optional tool call results from this turn.
+
+        Returns:
+            The turn ID (UUID string).
+
+        Raises:
+            ValidationError: If any argument fails length or format validation.
+            StoreConnectionError: If the Redis write fails after retries.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_id(session_id, "session_id")
+        _validate_text(user_message, "user_message", _MAX_MESSAGE_LEN)
+        _validate_text(assistant_message, "assistant_message", _MAX_MESSAGE_LEN)
+
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        token_count = len(enc.encode(f"{user_message}\n{assistant_message}"))
+
+        turn = Turn(
+            session_id=session_id,
+            user_message=user_message,
+            assistant_message=assistant_message,
+            tool_results=tool_results or [],
+            token_count=token_count,
+        )
+
+        await self._l1.append_turn(agent_id, session_id, turn)
+        log.debug("memory.turn.stored", agent_id=agent_id, session_id=session_id, turn_id=turn.id)
+
+        if self._cfg.auto_summarise:
+            count = await self._l1.turn_count(agent_id, session_id)
+            # L1 caps the list at max_session_turns, so once count crosses the
+            # threshold it stays there. Guard with a Redis SET-NX cooldown lock so
+            # we summarise the session at most once per cooldown window and never
+            # spawn duplicate/concurrent summaries (across the whole fleet), rather
+            # than firing an LLM summary + L2 upsert on every subsequent turn.
+            if count >= self._cfg.summarise_after_turns and await self._l1.try_acquire_summary_lock(
+                agent_id, session_id, self._cfg.summarise_cooldown_seconds
+            ):
+                task = asyncio.create_task(
+                    self._summarise_session(agent_id, session_id),
+                    name=f"summarise:{agent_id}:{session_id}",
+                )
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
+
+        return turn.id
+
+    async def retrieve_context(
+        self,
+        agent_id: str,
+        session_id: str,
+        query: str,
+        token_budget: int,
+    ) -> RetrievedContext:
+        """Fetch relevant context for the next LLM call using the 4-phase pipeline.
+
+        Phase 1 — Parallel fetch: Redis L1 (recent turns) + Qdrant L2 (semantic
+        search) run concurrently to minimise latency (<50 ms P99).
+
+        Phase 2 — Budget allocation: the token budget is divided between system
+        prompt, episodic memory, session turns, and the current turn using the
+        fractions in MemoryConfig.
+
+        Phase 3 — Relevance ranking: Qdrant results are filtered at the
+        configured threshold and re-ranked by
+        ``0.7 × cosine_similarity + 0.3 × recency_score``.
+
+        Phase 4 — Priority pruning: if results exceed the allocated budget,
+        oldest session turns are dropped first, then lowest-ranked memories.
+        The system-prompt budget is never consumed by this method.
+
+        Args:
+            agent_id: Agent identifier.
+            session_id: Session identifier.
+            query: The user's current message; drives L2 semantic search.
+            token_budget: Total tokens available for context. Must be > 0.
+
+        Returns:
+            RetrievedContext with recent_turns, episodic_memories, and budget stats.
+
+        Raises:
+            TokenBudgetError: If ``token_budget`` is 0 or negative.
+            ValidationError: If agent_id or session_id are invalid.
+            StoreConnectionError: If Redis or Qdrant fail after retries.
+            EmbeddingError: If the embedding call fails after retries.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_id(session_id, "session_id")
+        _validate_text(query, "query", _MAX_QUERY_LEN)
+        if token_budget <= 0:
+            raise TokenBudgetError(
+                f"token_budget must be > 0, got {token_budget}",
+                details={"token_budget": token_budget},
+            )
+
+        start = time.monotonic()
+
+        # Phase 1 — parallel fetch: embed the query and pull recent L1 turns concurrently.
+        query_embedding, recent_turns = await asyncio.gather(
+            self._embedder.embed(query),
+            self._l1.get_recent_turns(agent_id, session_id),
+        )
+
+        # Phase 3 — semantic search against L2 (requires the embedding from Phase 1).
+        episodic_memories = await self._l2.search(
+            agent_id=agent_id,
+            query_embedding=query_embedding,
+            threshold=self._cfg.relevance_threshold,
+            limit=self._cfg.max_episodic_memories,
+        )
+
+        # Phase 2 — budget allocation.
+        episodic_budget = int(token_budget * self._cfg.budget_fraction_episodic)
+        session_budget = int(token_budget * self._cfg.budget_fraction_session)
+
+        # Phase 4 — priority-weighted pruning. O(n) greedy passes.
+        pruned_turns = self._prune_turns(recent_turns, session_budget)
+        pruned_memories = self._prune_memories(episodic_memories, episodic_budget)
+
+        total_tokens = sum(t.token_count for t in pruned_turns) + sum(
+            m.token_count for m in pruned_memories
+        )
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        log.info(
+            "memory.context.retrieved",
+            agent_id=agent_id,
+            session_id=session_id,
+            turns=len(pruned_turns),
+            memories=len(pruned_memories),
+            tokens_used=total_tokens,
+            token_budget=token_budget,
+            duration_ms=round(elapsed_ms, 2),
+        )
+
+        return RetrievedContext(
+            recent_turns=pruned_turns,
+            episodic_memories=pruned_memories,
+            total_tokens_used=total_tokens,
+            token_budget=token_budget,
+            retrieval_duration_ms=elapsed_ms,
+        )
+
+    async def inject_memory(
+        self,
+        agent_id: str,
+        content: str,
+        importance: float = 0.8,
+        session_id: str = "injected",
+        topic_tags: list[str] | None = None,
+    ) -> str:
+        """Write a fact directly into Qdrant L2 long-term memory.
+
+        Use this to seed an agent with background knowledge before a conversation
+        starts — e.g. user preferences, company policies, domain facts.
+
+        Args:
+            agent_id: The agent that should have access to this memory.
+            content: Text of the memory. Write it as a clear, self-contained sentence.
+            importance: Score from 0.0 to 1.0. Higher values surface this memory
+                more readily. Recommended ≥ 0.8 for facts you always want recalled.
+            session_id: Label for where this memory came from. Defaults to ``"injected"``.
+            topic_tags: Optional keywords describing the memory topic.
+
+        Returns:
+            The memory ID (UUID). Save this to delete the memory later.
+
+        Raises:
+            ValidationError: If any argument fails validation.
+            StoreConnectionError: If the Qdrant write fails after retries.
+            EmbeddingError: If embedding generation fails after retries.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_text(content, "content", _MAX_CONTENT_LEN)
+        if not content.strip():
+            raise ValidationError("content", "must not be blank")
+        if not 0.0 <= importance <= 1.0:
+            raise ValidationError("importance", "must be between 0.0 and 1.0")
+        tags = topic_tags or []
+        if len(tags) > _MAX_TAGS:
+            raise ValidationError("topic_tags", f"must contain ≤ {_MAX_TAGS} tags")
+
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        embedding = await self._embedder.embed(content)
+        entry = MemoryEntry(
+            agent_id=agent_id,
+            session_id=session_id,
+            content=content,
+            content_type="injected",
+            embedding=embedding,
+            importance_score=importance,
+            topic_tags=tags,
+            token_count=len(enc.encode(content)),
+        )
+        await self._l2.upsert(entry)
+        log.info("memory.injected", agent_id=agent_id, memory_id=entry.id, importance=importance)
+        return entry.id
+
+    async def delete_memory(self, agent_id: str, memory_id: str) -> None:
+        """Permanently remove a memory from Qdrant L2 by ID.
+
+        Args:
+            agent_id: Agent that owns the memory (used for audit logging).
+            memory_id: ID returned by ``inject_memory()`` or from ``search_memories()``.
+
+        Raises:
+            MemoryNotFoundError: If the memory_id does not exist in Qdrant.
+            StoreConnectionError: If the Qdrant delete fails after retries.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_id(memory_id, "memory_id")
+        await self._l2.delete(memory_id)
+        log.info("memory.deleted", agent_id=agent_id, memory_id=memory_id)
+
+    async def clear_session(self, agent_id: str, session_id: str) -> None:
+        """Delete all Redis L1 turns for a session.
+
+        Long-term Qdrant memories (summaries, injected facts) are NOT deleted —
+        they persist across sessions by design.
+
+        Raises:
+            ValidationError: If arguments are invalid.
+            StoreConnectionError: If the Redis delete fails after retries.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_id(session_id, "session_id")
+        await self._l1.clear_session(agent_id, session_id)
+        log.info("memory.session.cleared", agent_id=agent_id, session_id=session_id)
+
+    async def search_memories(
+        self,
+        agent_id: str,
+        query: str,
+        limit: int = 10,
+    ) -> list[MemoryEntry]:
+        """Semantic search over Qdrant L2 for a given agent.
+
+        Results are ranked by the same formula used in ``retrieve_context()``:
+        ``0.7 × cosine_similarity + 0.3 × recency_score``.
+
+        Args:
+            agent_id: Agent whose memories to search.
+            query: Search query in plain text.
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of MemoryEntry objects, sorted by descending relevance score.
+
+        Raises:
+            ValidationError: If arguments are invalid.
+            StoreConnectionError: If Qdrant is unreachable.
+            EmbeddingError: If embedding generation fails.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_text(query, "query", _MAX_QUERY_LEN)
+        if limit < 1:
+            raise ValidationError("limit", "must be ≥ 1")
+
+        embedding = await self._embedder.embed(query)
+        return await self._l2.search(
+            agent_id=agent_id,
+            query_embedding=embedding,
+            threshold=self._cfg.relevance_threshold,
+            limit=limit,
+        )
+
+    async def get_session_metadata(self, agent_id: str, session_id: str) -> SessionMetadata | None:
+        """Return basic stats about a session (turn count, created_at, last_active).
+
+        Returns None if the session does not exist or has expired from Redis.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_id(session_id, "session_id")
+        return await self._l1.get_session_metadata(agent_id, session_id)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _prune_turns(self, turns: list[Turn], budget: int) -> list[Turn]:
+        """Trim a session-turn list to fit within ``budget`` tokens.
+
+        Strategy: walk newest → oldest and admit each turn while it fits.
+        The first turn that overflows terminates the loop — older turns are
+        guaranteed to drop because the next LLM call cares about *recent*
+        context above all else.
+
+        Invariants:
+            * Returned list is in chronological order (oldest first).
+            * Every admitted turn has token_count > 0.
+            * Total tokens never exceed ``budget``.
+
+        Complexity: O(n) over the input length; no allocations beyond the
+        result list.
+
+        Args:
+            turns:  Session turns ordered oldest → newest, as returned by L1.
+            budget: Maximum tokens allowed in the pruned set (≥ 0).
+
+        Returns:
+            A new list (the input is not mutated) containing the most recent
+            turns that fit. Empty when ``budget == 0`` or all turns oversize.
+        """
+        result: list[Turn] = []
+        remaining = budget
+        for turn in reversed(turns):
+            if turn.token_count <= remaining:
+                result.append(turn)
+                remaining -= turn.token_count
+            else:
+                break
+        result.reverse()
+        return result
+
+    def _prune_memories(self, memories: list[MemoryEntry], budget: int) -> list[MemoryEntry]:
+        """Trim a relevance-ranked memory list to fit within ``budget`` tokens.
+
+        Strategy: walk highest-ranked → lowest, skipping individual memories
+        that would overflow but continuing to consider smaller ones. This
+        differs from ``_prune_turns`` (which stops on the first overflow)
+        because the input here is pre-sorted by *relevance*, not recency —
+        skipping one oversized memory to admit several smaller, equally
+        relevant ones is the right trade-off.
+
+        Invariants:
+            * Returned list preserves the input's relative order.
+            * Every admitted memory has token_count > 0.
+            * Total tokens never exceed ``budget``.
+
+        Complexity: O(n) over the input length; no allocations beyond the
+        result list.
+
+        Args:
+            memories: Pre-sorted memories (highest relevance first) as
+                returned by ``QdrantStore.search``.
+            budget:   Maximum tokens allowed in the pruned set (≥ 0).
+
+        Returns:
+            A new list (the input is not mutated) containing the highest-
+            ranked memories that fit the budget.
+        """
+        result: list[MemoryEntry] = []
+        remaining = budget
+        for mem in memories:
+            if mem.token_count <= remaining:
+                result.append(mem)
+                remaining -= mem.token_count
+        return result
+
+    async def _summarise_session(self, agent_id: str, session_id: str) -> None:
+        """Background task — compress recent turns into a Qdrant L2 summary.
+
+        Uses an LLM when the OpenAI provider is configured (produces a genuine
+        abstractive summary). Falls back to extractive summarisation (first +
+        last quarter of text) when running in local-embedding mode.
+
+        Failures are recorded on ``background_task_failed_total`` and
+        re-raised when ``MemoryConfig.strict_background_errors`` is True
+        (test/dev mode). In production the metric drives alerting; the task
+        does not propagate the exception to its parent because asyncio
+        background tasks have no caller to receive it.
+        """
+        gauge = background_task_in_flight.labels(task="summarise_session")
+        gauge.inc()
+        try:
+            turns = await self._l1.get_recent_turns(
+                agent_id, session_id, n=self._cfg.summarise_after_turns
+            )
+            if not turns:
+                return
+
+            combined = "\n".join(
+                f"User: {t.user_message}\nAssistant: {t.assistant_message}" for t in turns
+            )
+
+            if self._summariser is not None:
+                summary = await self._summariser.summarise(combined)
+            else:
+                # Extractive fallback: first + last quarter of the conversation text.
+                # Used when no summariser is configured (local embedding mode).
+                summary = _extractive_summary(combined)
+
+            import tiktoken
+
+            enc = tiktoken.get_encoding("cl100k_base")
+            embedding = await self._embedder.embed(summary)
+            entry = MemoryEntry(
+                agent_id=agent_id,
+                session_id=session_id,
+                content=summary,
+                content_type="summary",
+                embedding=embedding,
+                importance_score=0.6,
+                token_count=len(enc.encode(summary)),
+                source_turn_ids=[t.id for t in turns],
+            )
+            await self._l2.upsert(entry)
+            log.info(
+                "memory.session.summarised",
+                agent_id=agent_id,
+                session_id=session_id,
+                memory_id=entry.id,
+                turns_compressed=len(turns),
+            )
+        except asyncio.CancelledError:
+            # Shutdown drain cancelled us; do not record as a failure.
+            raise
+        except Exception as exc:
+            background_task_failed_total.labels(
+                task="summarise_session",
+                exception=type(exc).__name__,
+            ).inc()
+            log.exception(
+                "memory.summarise.failed",
+                agent_id=agent_id,
+                session_id=session_id,
+                exception=type(exc).__name__,
+            )
+            if self._cfg.strict_background_errors:
+                raise
+        finally:
+            gauge.dec()
+
+    # ------------------------------------------------------------------
+    # Factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    async def create(cls, config: MemoryConfig | None = None) -> MemoryManager:
+        """Connect to Redis and Qdrant, set up the embedder, and return a ready MemoryManager.
+
+        Reads configuration from environment variables when config is None.
+
+        Raises:
+            ConfigurationError: If required settings are missing or invalid.
+            StoreConnectionError: If Redis or Qdrant cannot be reached.
+        """
+        cfg = config or MemoryConfig()
+        cfg.validate_runtime()
+
+        raw_embedder: Embedder
+        summariser: _Summariser | None = None
+
+        if cfg.embedding_provider == "openai":
+            api_key = _resolve_openai_key(cfg)
+            raw_embedder = OpenAIEmbedder(
+                api_key=api_key,
+                model=cfg.embedding_model,
+                dimensions=cfg.embedding_dimensions,
+            )
+            summariser = _OpenAISummariser(api_key=api_key, model=cfg.summarisation_model)
+        else:
+            raw_embedder = LocalEmbedder()
+            summariser = None  # extractive fallback used in _summarise_session
+
+        # Shared Redis client for both the session store and the embedding cache.
+        from redis.asyncio.connection import ConnectionPool
+
+        pool = ConnectionPool.from_url(
+            cfg.redis_url,
+            decode_responses=False,
+            max_connections=cfg.redis_max_connections,
+            socket_timeout=cfg.redis_socket_timeout,
+            socket_connect_timeout=cfg.redis_socket_connect_timeout,
+        )
+        redis_client: Redis = Redis(connection_pool=pool)
+
+        embedder = CachedEmbedder(
+            raw_embedder, redis_client, ttl_seconds=cfg.embedding_cache_ttl_seconds
+        )
+
+        l1 = await RedisStore.from_url(
+            cfg.redis_url,
+            cfg.session_ttl_hours,
+            cfg.max_session_turns,
+            max_connections=cfg.redis_max_connections,
+            socket_timeout=cfg.redis_socket_timeout,
+            socket_connect_timeout=cfg.redis_socket_connect_timeout,
+        )
+        l2 = await QdrantStore.from_url(
+            cfg.qdrant_url,
+            api_key=cfg.qdrant_api_key.get_secret_value() if cfg.qdrant_api_key else None,
+            collection=cfg.qdrant_collection,
+            dimensions=cfg.embedding_dimensions,
+            relevance_weight=cfg.relevance_weight,
+            recency_weight=cfg.recency_weight,
+            timeout=cfg.qdrant_timeout,
+        )
+
+        return cls(l1, l2, embedder, cfg, summariser)
+
+    async def close(self) -> None:
+        """Close all connections to Redis and Qdrant.
+
+        Drains in-flight background tasks (e.g. session summarisation) up to
+        ``MemoryConfig.shutdown_grace_seconds``. Tasks that have not finished
+        within the grace window are cancelled so the process can exit.
+        """
+        if self._background_tasks:
+            grace = self._cfg.shutdown_grace_seconds
+            pending = list(self._background_tasks)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*pending, return_exceptions=True),
+                    timeout=grace,
+                )
+            except TimeoutError:
+                log.warning(
+                    "memory.shutdown.background_drain_timeout",
+                    pending=len(self._background_tasks),
+                    grace_seconds=grace,
+                )
+                for task in self._background_tasks:
+                    task.cancel()
+                # Give cancelled tasks a brief window to clean up.
+                await asyncio.gather(*self._background_tasks, return_exceptions=True)
+        await self._l1.close()
+        await self._l2.close()
+
+    async def __aenter__(self) -> MemoryManager:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
+
+
+# ------------------------------------------------------------------
+# Summariser protocol and implementations
+# ------------------------------------------------------------------
+
+
+class _Summariser:
+    """Internal protocol — summarise a block of conversation text into a concise paragraph."""
+
+    async def summarise(self, text: str) -> str:
+        raise NotImplementedError
+
+
+class _OpenAISummariser(_Summariser):
+    """Abstractive summariser using GPT-4o-mini.
+
+    Produces a 2-3 sentence summary capturing key topics and facts.
+    Cost: ~$0.00003 per summarisation at typical conversation lengths.
+    """
+
+    _SYSTEM_PROMPT = (
+        "You are a precise conversation summariser. "
+        "Summarise the following conversation in 2-3 sentences. "
+        "Capture the key topics discussed and any important facts or decisions. "
+        "Be concise. Do not add opinions or information not present in the conversation."
+    )
+
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini") -> None:
+        from openai import AsyncOpenAI
+
+        self._client = AsyncOpenAI(api_key=api_key)
+        self._model = model
+
+    async def summarise(self, text: str) -> str:
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": self._SYSTEM_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                max_tokens=200,
+                temperature=0.3,
+            )
+            return response.choices[0].message.content or _extractive_summary(text)
+        except Exception as exc:
+            log.warning("summariser.llm.failed", error=str(exc), model=self._model)
+            return _extractive_summary(text)
+
+
+def _resolve_openai_key(cfg: MemoryConfig) -> str:
+    """Return the OpenAI API key as a plain string, failing loudly if missing.
+
+    Centralises the None-narrowing that ``MemoryConfig.openai_api_key: SecretStr | None``
+    requires when ``embedding_provider == "openai"``. ``validate_runtime()``
+    asserts presence at startup, but a defensive check here lets mypy --strict
+    erase the Optional cleanly without a ``# type: ignore``.
+    """
+    if cfg.openai_api_key is None:
+        raise ConfigurationError(
+            "ACTRONE_OPENAI_API_KEY is required when embedding_provider='openai'.",
+            details={"embedding_provider": cfg.embedding_provider},
+        )
+    return cfg.openai_api_key.get_secret_value()
+
+
+def _extractive_summary(text: str, max_chars: int = 800) -> str:
+    """Fallback: return first + last quarter of the text, capped at max_chars.
+
+    Used when no LLM summariser is available (local embedding mode) or when
+    the LLM call fails. Not as useful as an abstractive summary but ensures
+    L2 always gets some signal.
+    """
+    if len(text) <= max_chars:
+        return text
+    quarter = max_chars // 4
+    return text[: quarter * 2] + "\n...\n" + text[-quarter:]
+
+
+# ------------------------------------------------------------------
+# Convenience context manager
+# ------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def create_memory_manager(config: MemoryConfig | None = None) -> AsyncIterator[MemoryManager]:
+    """Async context manager that creates and automatically closes a MemoryManager.
+
+    Usage::
+
+        async with create_memory_manager() as mm:
+            await mm.store_turn(...)
+    """
+    mm = await MemoryManager.create(config)
+    try:
+        yield mm
+    finally:
+        await mm.close()
