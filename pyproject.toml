@@ -69,9 +69,9 @@ dev = [
 
 [project.urls]
 Homepage = "https://actrone.com"
-Repository = "https://github.com/actrone/actrone-memory"
+Repository = "https://github.com/actrone/actrone-memory-py"
 Documentation = "https://docs.actrone.com/memory"
-"Bug Tracker" = "https://github.com/actrone/actrone-memory/issues"
+"Bug Tracker" = "https://github.com/actrone/actrone-memory-py/issues"
 
 [build-system]
 requires = ["hatchling"]
