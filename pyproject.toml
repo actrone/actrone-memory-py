@@ -3,7 +3,8 @@ name = "actrone-memory"
 version = "0.2.0"
 description = "Production-grade two-tier persistent memory for AI agents — Redis L1 + Qdrant L2"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"                    # PEP 639 SPDX expression
+license-files = ["LICENSE"]
 authors = [{ name = "Actrone", email = "hello@actrone.com" }]
 keywords = [
     "ai", "agents", "memory", "langchain", "langgraph", "crewai",
@@ -12,7 +13,6 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -71,10 +71,11 @@ dev = [
 Homepage = "https://actrone.com"
 Repository = "https://github.com/actrone/actrone-memory-py"
 Documentation = "https://docs.actrone.com/memory"
-"Bug Tracker" = "https://github.com/actrone/actrone-memory-py/issues"
+Issues = "https://github.com/actrone/actrone-memory-py/issues"
+Changelog = "https://github.com/actrone/actrone-memory-py/blob/main/CHANGELOG.md"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"] # >=1.27 for PEP 639 SPDX license + license-files support
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
