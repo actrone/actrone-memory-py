@@ -66,6 +66,12 @@ dev = [
     "respx>=0.21,<1",
     "bandit>=1.7,<2",
 ]
+# API-reference generation (Public-Domain Cutover Runbook Phase 6, item 4). Sphinx autodoc renders the
+# reference from the package source. Build: `sphinx-build -b html docs docs/_build/html`.
+docs = [
+    "sphinx>=9,<10",
+    "furo>=2025.12",
+]
 
 [project.urls]
 Homepage = "https://actrone.com"

@@ -44,6 +44,12 @@ jobs:
             --cov-report=xml \
             --cov-fail-under=80 \
             -v
+      - name: Type-check docs examples (Phase 6 item 5)
+        # The guide snippets are real, mypy-checked example files against the installed package (which
+        # ships py.typed); an API change that breaks a documented snippet fails here.
+        run: mypy examples/quickstart.py --strict --explicit-package-bases
+      - name: Verify extracted snippets are in sync
+        run: python scripts/extract_snippets.py --check
       - uses: codecov/codecov-action@v4
         with:
           files: coverage.xml
@@ -94,6 +100,22 @@ jobs:
       - run: uv pip install --system pip-audit
       - name: Audit dependencies for known vulnerabilities
         run: pip-audit --requirement <(uv pip compile pyproject.toml) --strict
+
+  docs:
+    name: API Reference (Sphinx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      # Adapters lazily import their frameworks (try/except ImportError), so autodoc needs only the
+      # base package + docs tooling. A broken doc-comment / import / RST failure fails the Sphinx build.
+      - run: uv pip install --system -e ".[docs]"
+      - name: Generate API reference
+        run: |
+          sphinx-apidoc -o docs/reference src/actrone_memory -f -e
+          sphinx-build -b html docs docs/_build/html
 
   build:
     name: Docker Build

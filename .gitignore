@@ -45,3 +45,5 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+docs/_build/
+docs/reference/
