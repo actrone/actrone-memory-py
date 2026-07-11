@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import math
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar, cast
@@ -14,6 +16,7 @@ from actrone_memory.exceptions import EmbeddingError
 log = structlog.get_logger(__name__)
 
 _CACHE_PREFIX = "embed:"
+_WORD_RE = re.compile(r"[a-z0-9]+")
 
 
 _RetryableFn = TypeVar("_RetryableFn", bound=Callable[..., Awaitable[Any]])
@@ -189,6 +192,58 @@ class OpenAIEmbedder(Embedder):
                 "openai.embed.failed", error=str(exc), model=self._model, batch_size=len(texts)
             )
             raise EmbeddingError(f"OpenAI embedding failed: {exc}") from exc
+
+
+def _fnv1a_32(s: str) -> int:
+    """FNV-1a 32-bit hash → non-negative int. Matches the TS ``hash32`` helper."""
+    h = 0x811C9DC5
+    for ch in s:
+        h ^= ord(ch)
+        # 32-bit FNV prime multiply, kept in uint32.
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return h
+
+
+class HashingEmbedder(Embedder):
+    """Deterministic, dependency-free hashing embedder (a "hashing vectorizer").
+
+    Hashes words into a fixed-dimension bag-of-words vector and L2-normalises it,
+    so cosine similarity reflects word overlap. This is the **zero-dependency,
+    zero-API-key default** — parity with the TypeScript ``LocalEmbedder`` — which
+    makes the whole library run fully offline with no model download and no
+    external service. It is not semantically rich (no synonymy); for production
+    recall quality pass an :class:`OpenAIEmbedder` or the sentence-transformers
+    :class:`LocalEmbedder`.
+
+    Deterministic: identical text always yields an identical vector, so no cache
+    is needed.
+    """
+
+    def __init__(self, dimensions: int = 256) -> None:
+        if dimensions <= 0:
+            raise ValueError("dimensions must be > 0")
+        self._dimensions = dimensions
+
+    @property
+    def dimensions(self) -> int:
+        return self._dimensions
+
+    def _embed_one(self, text: str) -> list[float]:
+        vec = [0.0] * self._dimensions
+        for word in _WORD_RE.findall(text.lower()):
+            bucket = _fnv1a_32(word) % self._dimensions
+            vec[bucket] += 1.0
+        # L2-normalise so cosine similarity is a plain dot product.
+        norm = math.sqrt(sum(v * v for v in vec))
+        if norm == 0.0:
+            return vec
+        return [v / norm for v in vec]
+
+    async def embed(self, text: str) -> list[float]:
+        return self._embed_one(text)
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed_one(t) for t in texts]
 
 
 class LocalEmbedder(Embedder):

@@ -46,8 +46,12 @@ pip install "actrone-memory[local]"       # use local embeddings, no OpenAI need
 pip install "actrone-memory[all]"         # everything
 ```
 
-**You'll need:** Python 3.11+, a running Redis instance, and a running Qdrant instance.
-Start both instantly with Docker:
+**You'll need:** Python 3.11+. **That's it** — the default backend is fully local
+and in-process, so there are **no services to run and no API key** to get started.
+Memory that never phones home.
+
+For durable, horizontally-scalable production, opt into the Redis + Qdrant backend
+(see [Going to production](#going-to-production)) — both start instantly with Docker:
 
 ```bash
 docker run -d -p 6379:6379 redis:7.2-alpine
@@ -56,13 +60,15 @@ docker run -d -p 6333:6333 qdrant/qdrant:v1.9.2
 
 ---
 
-## Quickstart — 10 Lines
+## Quickstart — zero services, zero keys
 
 ```python
 import asyncio
 from actrone_memory import MemoryManager
 
 async def main():
+    # Local-first by default: in-memory store + a dependency-free embedder.
+    # No Redis, no Qdrant, no OpenAI key required.
     async with MemoryManager.create() as memory:
         # Save what the user said
         await memory.store_turn(
@@ -86,13 +92,30 @@ async def main():
 asyncio.run(main())
 ```
 
-Set these environment variables first:
+The dependency-free `HashingEmbedder` is deterministic keyword-overlap recall —
+great for local dev and tests. For semantic recall quality, set an embedding
+provider (below).
+
+### Going to production
+
+Two independent switches — flip them when you need durability and/or semantic
+recall. Both default off so you can start with zero setup.
 
 ```bash
+# Durable, horizontally-scalable backend (Redis L1 + Qdrant L2)
+export ACTRONE_BACKEND=redis_qdrant
 export ACTRONE_REDIS_URL=redis://localhost:6379
 export ACTRONE_QDRANT_URL=http://localhost:6333
+
+# Semantic embeddings (choose ONE)
+export ACTRONE_EMBEDDING_PROVIDER=openai        # needs the key below
 export ACTRONE_OPENAI_API_KEY=sk-...
+# ...or run fully offline with a real model:
+#   pip install "actrone-memory[local]"
+#   export ACTRONE_EMBEDDING_PROVIDER=local     # sentence-transformers, no key
 ```
+
+No code changes — the same `MemoryManager.create()` reads these at startup.
 
 ---
 

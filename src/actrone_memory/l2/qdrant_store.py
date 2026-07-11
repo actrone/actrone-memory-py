@@ -103,6 +103,8 @@ class QdrantStore:
                 "token_count": entry.token_count,
                 "timestamp": entry.timestamp.isoformat(),
                 "source_turn_ids": entry.source_turn_ids,
+                "source": entry.source,
+                "sensitivity": entry.sensitivity,
             },
         )
         try:
@@ -130,6 +132,8 @@ class QdrantStore:
                     "token_count": e.token_count,
                     "timestamp": e.timestamp.isoformat(),
                     "source_turn_ids": e.source_turn_ids,
+                    "source": e.source,
+                    "sensitivity": e.sensitivity,
                 },
             )
             for e in entries
@@ -211,6 +215,8 @@ class QdrantStore:
                 token_count=payload.get("token_count", 0),
                 timestamp=datetime.fromisoformat(ts_str),
                 source_turn_ids=payload.get("source_turn_ids", []),
+                source=payload.get("source", "unknown"),
+                sensitivity=payload.get("sensitivity", "none"),
             )
             scored.append((combined, entry))
 

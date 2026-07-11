@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from actrone_memory.exceptions import EmbeddingError
-from actrone_memory.l2.embedder import CachedEmbedder, OpenAIEmbedder
+from actrone_memory.l2.embedder import CachedEmbedder, HashingEmbedder, OpenAIEmbedder
 from tests.conftest import ConstantEmbedder
 
 
@@ -122,3 +122,60 @@ async def test_openai_embedder_raises_embedding_error_on_failure():
 
     with pytest.raises(EmbeddingError, match="OpenAI embedding failed"):
         await embedder.embed("fail")
+
+
+# ------------------------------------------------------------------
+# HashingEmbedder (dependency-free, deterministic default)
+# ------------------------------------------------------------------
+
+def test_hashing_embedder_rejects_bad_dimensions():
+    with pytest.raises(ValueError, match="dimensions"):
+        HashingEmbedder(dimensions=0)
+
+
+def test_hashing_embedder_dimensions_property():
+    assert HashingEmbedder(dimensions=128).dimensions == 128
+    assert HashingEmbedder().dimensions == 256  # default matches TS LocalEmbedder
+
+
+@pytest.mark.asyncio
+async def test_hashing_embedder_is_deterministic():
+    emb = HashingEmbedder()
+    v1 = await emb.embed("the quick brown fox")
+    v2 = await emb.embed("the quick brown fox")
+    assert v1 == v2
+    assert len(v1) == 256
+
+
+@pytest.mark.asyncio
+async def test_hashing_embedder_is_l2_normalised():
+    emb = HashingEmbedder()
+    vec = await emb.embed("hello world hello")
+    norm = sum(v * v for v in vec) ** 0.5
+    assert norm == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_hashing_embedder_empty_text_is_zero_vector():
+    emb = HashingEmbedder(dimensions=16)
+    vec = await emb.embed("!!!")  # no word characters
+    assert vec == [0.0] * 16
+
+
+@pytest.mark.asyncio
+async def test_hashing_embedder_word_overlap_scores_higher():
+    from actrone_memory.in_memory import cosine_similarity
+
+    emb = HashingEmbedder()
+    query = await emb.embed("database connection pool settings")
+    related = await emb.embed("connection pool settings for the database")
+    unrelated = await emb.embed("the weather in Paris is sunny today")
+    assert cosine_similarity(query, related) > cosine_similarity(query, unrelated)
+
+
+@pytest.mark.asyncio
+async def test_hashing_embedder_batch_matches_single():
+    emb = HashingEmbedder()
+    batch = await emb.embed_batch(["alpha beta", "gamma delta"])
+    assert batch[0] == await emb.embed("alpha beta")
+    assert batch[1] == await emb.embed("gamma delta")

@@ -22,7 +22,13 @@ class MemoryConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="ACTRONE_", env_file=".env", extra="ignore")
 
-    # ── Store connections ────────────────────────────────────────────────
+    # ── Backend ──────────────────────────────────────────────────────────
+    # "memory" (default) is the zero-service, in-process local-first backend —
+    # no Redis, no Qdrant, no API key — parity with the TypeScript on-ramp.
+    # "redis_qdrant" is the durable, horizontally-scalable production backend.
+    backend: Literal["memory", "redis_qdrant"] = "memory"
+
+    # ── Store connections (used only when backend="redis_qdrant") ─────────
     redis_url: str = "redis://localhost:6379"
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: SecretStr | None = None
@@ -37,10 +43,15 @@ class MemoryConfig(BaseSettings):
     qdrant_timeout: float = 10.0
 
     # ── Embedding ────────────────────────────────────────────────────────
-    embedding_provider: Literal["openai", "local"] = "openai"
+    # "hashing" (default): dependency-free, deterministic, offline, no API key.
+    # "openai": text-embedding-3-small (needs ACTRONE_OPENAI_API_KEY).
+    # "local": sentence-transformers all-MiniLM-L6-v2 (needs the [local] extra).
+    embedding_provider: Literal["openai", "local", "hashing"] = "hashing"
     openai_api_key: SecretStr | None = None
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
+    # Vector width for the hashing embedder (matches the TS LocalEmbedder default).
+    hashing_dimensions: int = 256
     embedding_cache_ttl_seconds: int = 604800  # 7 days
 
     # ── Summarisation ────────────────────────────────────────────────────
@@ -58,6 +69,14 @@ class MemoryConfig(BaseSettings):
     relevance_threshold: float = 0.72
     relevance_weight: float = 0.7  # recency_weight = 1 - relevance_weight
     recency_weight: float = 0.3
+
+    # ── Fact extraction (LLM-gated, opt-in) ──────────────────────────────
+    # When True *and* an LLM embedder/summariser is configured (OpenAI provider),
+    # durable atomic facts are extracted from a session's turns and stored as
+    # first-class memories (content_type="fact", source="extracted"). Off by
+    # default because it costs one LLM call per extraction. Rides the same cadence
+    # as auto-summarisation to stay cost-bounded.
+    extract_facts: bool = False
 
     # ── Auto-summarisation ───────────────────────────────────────────────
     auto_summarise: bool = True

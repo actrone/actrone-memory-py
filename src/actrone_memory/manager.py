@@ -10,14 +10,30 @@ from redis.asyncio import Redis
 
 from actrone_memory.config import MemoryConfig
 from actrone_memory.exceptions import ConfigurationError, TokenBudgetError, ValidationError
+from actrone_memory.extraction import FactExtractor, OpenAIFactExtractor
+from actrone_memory.in_memory import InMemoryStore
 from actrone_memory.l1.redis_store import RedisStore
-from actrone_memory.l2.embedder import CachedEmbedder, Embedder, LocalEmbedder, OpenAIEmbedder
+from actrone_memory.l2.embedder import (
+    CachedEmbedder,
+    Embedder,
+    HashingEmbedder,
+    LocalEmbedder,
+    OpenAIEmbedder,
+)
 from actrone_memory.l2.qdrant_store import QdrantStore
 from actrone_memory.metrics import (
     background_task_failed_total,
     background_task_in_flight,
 )
-from actrone_memory.models import MemoryEntry, RetrievedContext, SessionMetadata, ToolResult, Turn
+from actrone_memory.models import (
+    MemoryEntry,
+    RetrievedContext,
+    Sensitivity,
+    SessionMetadata,
+    ToolResult,
+    Turn,
+)
+from actrone_memory.protocols import L1Store, L2Store
 
 log = structlog.get_logger(__name__)
 
@@ -56,17 +72,19 @@ class MemoryManager:
 
     def __init__(
         self,
-        l1: RedisStore,
-        l2: QdrantStore,
+        l1: L1Store,
+        l2: L2Store,
         embedder: Embedder,
         config: MemoryConfig,
         summariser: _Summariser | None = None,
+        extractor: FactExtractor | None = None,
     ) -> None:
         self._l1 = l1
         self._l2 = l2
         self._embedder = embedder
         self._cfg = config
         self._summariser = summariser
+        self._extractor = extractor
         # Strong references to background tasks. Without these, asyncio's GC
         # may collect the underlying task object mid-execution and silently
         # drop the work. close() drains this set before shutting down stores.
@@ -246,8 +264,10 @@ class MemoryManager:
         importance: float = 0.8,
         session_id: str = "injected",
         topic_tags: list[str] | None = None,
+        source: str = "injected",
+        sensitivity: Sensitivity = "none",
     ) -> str:
-        """Write a fact directly into Qdrant L2 long-term memory.
+        """Write a fact directly into L2 long-term memory.
 
         Use this to seed an agent with background knowledge before a conversation
         starts — e.g. user preferences, company policies, domain facts.
@@ -259,6 +279,10 @@ class MemoryManager:
                 more readily. Recommended ≥ 0.8 for facts you always want recalled.
             session_id: Label for where this memory came from. Defaults to ``"injected"``.
             topic_tags: Optional keywords describing the memory topic.
+            source: Provenance attribution — where this fact originated (e.g.
+                ``"injected"``, ``"import:crm"``, ``"tool:web_search"``).
+            sensitivity: PII/sensitivity classification for governance and
+                right-to-erasure (``"none"`` | ``"low"`` | ``"pii"`` | ``"sensitive"``).
 
         Returns:
             The memory ID (UUID). Save this to delete the memory later.
@@ -277,6 +301,7 @@ class MemoryManager:
         tags = topic_tags or []
         if len(tags) > _MAX_TAGS:
             raise ValidationError("topic_tags", f"must contain ≤ {_MAX_TAGS} tags")
+        _validate_text(source, "source", _MAX_ID_LEN)
 
         import tiktoken
 
@@ -291,9 +316,18 @@ class MemoryManager:
             importance_score=importance,
             topic_tags=tags,
             token_count=len(enc.encode(content)),
+            source=source,
+            sensitivity=sensitivity,
         )
         await self._l2.upsert(entry)
-        log.info("memory.injected", agent_id=agent_id, memory_id=entry.id, importance=importance)
+        log.info(
+            "memory.injected",
+            agent_id=agent_id,
+            memory_id=entry.id,
+            importance=importance,
+            source=source,
+            sensitivity=sensitivity,
+        )
         return entry.id
 
     async def delete_memory(self, agent_id: str, memory_id: str) -> None:
@@ -311,6 +345,29 @@ class MemoryManager:
         _validate_id(memory_id, "memory_id")
         await self._l2.delete(memory_id)
         log.info("memory.deleted", agent_id=agent_id, memory_id=memory_id)
+
+    async def erase_agent_memories(self, agent_id: str, session_id: str | None = None) -> None:
+        """Local right-to-erasure — irreversibly delete an agent's long-term memories.
+
+        This is the governance seed that graduates to hosted *provable* erasure: in
+        the OSS library it performs a hard local delete. If ``session_id`` is given,
+        the session's short-term (L1) turns are cleared too; otherwise only the
+        durable L2 store is wiped (L1 turns are ephemeral and expire on their TTL).
+
+        Args:
+            agent_id: The agent whose long-term memories to erase.
+            session_id: Optional session whose short-term turns to also clear.
+
+        Raises:
+            ValidationError: If arguments are invalid.
+            StoreConnectionError: If the underlying delete fails after retries.
+        """
+        _validate_id(agent_id, "agent_id")
+        await self._l2.delete_agent_memories(agent_id)
+        if session_id is not None:
+            _validate_id(session_id, "session_id")
+            await self._l1.clear_session(agent_id, session_id)
+        log.info("memory.agent.erased", agent_id=agent_id, session_id=session_id)
 
     async def clear_session(self, agent_id: str, session_id: str) -> None:
         """Delete all Redis L1 turns for a session.
@@ -373,9 +430,95 @@ class MemoryManager:
         _validate_id(session_id, "session_id")
         return await self._l1.get_session_metadata(agent_id, session_id)
 
+    async def extract_memories(
+        self, agent_id: str, session_id: str, n: int | None = None
+    ) -> list[str]:
+        """Extract durable facts from a session's recent turns and store them.
+
+        Turns → atomic facts (``content_type="fact"``, ``source="extracted"``),
+        each with an LLM-classified sensitivity. This is the "credible beyond turn
+        storage" capability; it is **LLM-gated** — a ``FactExtractor`` must be
+        configured (``MemoryConfig.extract_facts=True`` with the OpenAI provider),
+        otherwise a ``ConfigurationError`` is raised.
+
+        Args:
+            agent_id: Agent identifier.
+            session_id: Session whose turns to mine for facts.
+            n: How many recent turns to consider (defaults to the summarise window).
+
+        Returns:
+            The memory IDs of the stored facts (empty if nothing durable was found).
+
+        Raises:
+            ConfigurationError: If no fact extractor is configured.
+            ValidationError: If arguments are invalid.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_id(session_id, "session_id")
+        if self._extractor is None:
+            raise ConfigurationError(
+                "Fact extraction is not enabled. Set MemoryConfig.extract_facts=True "
+                "with the OpenAI embedding provider.",
+                details={"extract_facts": self._cfg.extract_facts},
+            )
+        turns = await self._l1.get_recent_turns(
+            agent_id, session_id, n=n or self._cfg.summarise_after_turns
+        )
+        return await self._store_extracted_facts(agent_id, session_id, turns)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    async def _store_extracted_facts(
+        self, agent_id: str, session_id: str, turns: list[Turn]
+    ) -> list[str]:
+        """Run the fact extractor over ``turns`` and upsert each fact to L2.
+
+        Best-effort: with no extractor or no turns it returns ``[]``. Extractor
+        failures surface as an empty fact list (the extractor swallows its own
+        errors), so this never breaks the caller.
+        """
+        if self._extractor is None or not turns:
+            return []
+
+        combined = "\n".join(
+            f"User: {t.user_message}\nAssistant: {t.assistant_message}" for t in turns
+        )
+        facts = await self._extractor.extract(combined)
+        if not facts:
+            return []
+
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        source_ids = [t.id for t in turns]
+        stored: list[str] = []
+        for fact in facts:
+            embedding = await self._embedder.embed(fact.content)
+            entry = MemoryEntry(
+                agent_id=agent_id,
+                session_id=session_id,
+                content=fact.content,
+                content_type="fact",
+                embedding=embedding,
+                importance_score=fact.importance,
+                topic_tags=fact.topic_tags,
+                token_count=len(enc.encode(fact.content)),
+                source_turn_ids=source_ids,
+                source="extracted",
+                sensitivity=fact.sensitivity,
+            )
+            await self._l2.upsert(entry)
+            stored.append(entry.id)
+
+        log.info(
+            "memory.facts.extracted",
+            agent_id=agent_id,
+            session_id=session_id,
+            facts=len(stored),
+        )
+        return stored
 
     def _prune_turns(self, turns: list[Turn], budget: int) -> list[Turn]:
         """Trim a session-turn list to fit within ``budget`` tokens.
@@ -493,6 +636,7 @@ class MemoryManager:
                 importance_score=0.6,
                 token_count=len(enc.encode(summary)),
                 source_turn_ids=[t.id for t in turns],
+                source="summary",
             )
             await self._l2.upsert(entry)
             log.info(
@@ -502,6 +646,10 @@ class MemoryManager:
                 memory_id=entry.id,
                 turns_compressed=len(turns),
             )
+            # Opt-in fact extraction rides the summarise cadence (already deduped by
+            # the summary lock), so it stays cost-bounded and never per-turn.
+            if self._extractor is not None:
+                await self._store_extracted_facts(agent_id, session_id, turns)
         except asyncio.CancelledError:
             # Shutdown drain cancelled us; do not record as a failure.
             raise
@@ -527,32 +675,40 @@ class MemoryManager:
 
     @classmethod
     async def create(cls, config: MemoryConfig | None = None) -> MemoryManager:
-        """Connect to Redis and Qdrant, set up the embedder, and return a ready MemoryManager.
+        """Build a ready MemoryManager for the configured backend.
+
+        The default backend is ``"memory"`` — a zero-service, in-process store with
+        a dependency-free hashing embedder, so ``create()`` needs no Redis, no
+        Qdrant, and no API key (parity with the TypeScript on-ramp). Set
+        ``backend="redis_qdrant"`` (env ``ACTRONE_BACKEND=redis_qdrant``) for the
+        durable, horizontally-scalable production path.
 
         Reads configuration from environment variables when config is None.
 
         Raises:
             ConfigurationError: If required settings are missing or invalid.
-            StoreConnectionError: If Redis or Qdrant cannot be reached.
+            StoreConnectionError: If Redis or Qdrant cannot be reached
+                (``redis_qdrant`` backend only).
         """
         cfg = config or MemoryConfig()
         cfg.validate_runtime()
 
-        raw_embedder: Embedder
-        summariser: _Summariser | None = None
+        raw_embedder, summariser = cls._build_embedder(cfg)
+        extractor = cls._build_extractor(cfg)
 
-        if cfg.embedding_provider == "openai":
-            api_key = _resolve_openai_key(cfg)
-            raw_embedder = OpenAIEmbedder(
-                api_key=api_key,
-                model=cfg.embedding_model,
-                dimensions=cfg.embedding_dimensions,
+        if cfg.backend == "memory":
+            # Zero-service local-first path. The hashing embedder is deterministic,
+            # so no cache layer is needed; a real embedder is still fine here (just
+            # uncached) for a local run against OpenAI/sentence-transformers.
+            store = InMemoryStore(
+                max_turns=cfg.max_session_turns,
+                relevance_weight=cfg.relevance_weight,
+                recency_weight=cfg.recency_weight,
             )
-            summariser = _OpenAISummariser(api_key=api_key, model=cfg.summarisation_model)
-        else:
-            raw_embedder = LocalEmbedder()
-            summariser = None  # extractive fallback used in _summarise_session
+            log.info("memory.backend.local", embedding_provider=cfg.embedding_provider)
+            return cls(store, store, raw_embedder, cfg, summariser, extractor)
 
+        # ── Durable production backend: Redis L1 + Qdrant L2 ──────────────
         # Shared Redis client for both the session store and the embedding cache.
         from redis.asyncio.connection import ConnectionPool
 
@@ -581,13 +737,51 @@ class MemoryManager:
             cfg.qdrant_url,
             api_key=cfg.qdrant_api_key.get_secret_value() if cfg.qdrant_api_key else None,
             collection=cfg.qdrant_collection,
-            dimensions=cfg.embedding_dimensions,
+            # Size the collection to the embedder actually in use, not a fixed
+            # constant — the hashing/local embedders have their own dimensions.
+            dimensions=raw_embedder.dimensions,
             relevance_weight=cfg.relevance_weight,
             recency_weight=cfg.recency_weight,
             timeout=cfg.qdrant_timeout,
         )
 
-        return cls(l1, l2, embedder, cfg, summariser)
+        return cls(l1, l2, embedder, cfg, summariser, extractor)
+
+    @staticmethod
+    def _build_extractor(cfg: MemoryConfig) -> FactExtractor | None:
+        """Construct the LLM fact extractor when opt-in *and* an LLM is available.
+
+        Extraction requires an OpenAI key (the only LLM provider wired in OSS), so
+        it is silently skipped for the hashing/local embedding providers even if
+        ``extract_facts`` is set — extraction is best-effort enrichment.
+        """
+        if not cfg.extract_facts or cfg.embedding_provider != "openai":
+            return None
+        return OpenAIFactExtractor(
+            api_key=_resolve_openai_key(cfg), model=cfg.summarisation_model
+        )
+
+    @staticmethod
+    def _build_embedder(cfg: MemoryConfig) -> tuple[Embedder, _Summariser | None]:
+        """Construct the embedder (and matching summariser) for the config.
+
+        Returns the raw (uncached) embedder plus an LLM summariser when the OpenAI
+        provider is configured, else ``None`` (the extractive fallback is used).
+        """
+        if cfg.embedding_provider == "openai":
+            api_key = _resolve_openai_key(cfg)
+            return (
+                OpenAIEmbedder(
+                    api_key=api_key,
+                    model=cfg.embedding_model,
+                    dimensions=cfg.embedding_dimensions,
+                ),
+                _OpenAISummariser(api_key=api_key, model=cfg.summarisation_model),
+            )
+        if cfg.embedding_provider == "local":
+            return LocalEmbedder(), None
+        # "hashing" — the dependency-free, offline default.
+        return HashingEmbedder(dimensions=cfg.hashing_dimensions), None
 
     async def close(self) -> None:
         """Close all connections to Redis and Qdrant.

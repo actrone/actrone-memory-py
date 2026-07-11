@@ -4,6 +4,57 @@ All notable changes to `actrone-memory` follow [Semantic Versioning](https://sem
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Local-first, zero-service default backend.** `MemoryManager.create()` now runs
+  fully in-process with **no Redis, no Qdrant, and no API key** — parity with the
+  TypeScript `@actrone/memory` on-ramp. "Memory that never phones home."
+  - New `InMemoryStore` (`actrone_memory.in_memory`) implements **both** the L1
+    (hot session) and L2 (cold semantic) tiers with the same blended
+    relevance+recency ranking as the Qdrant backend.
+  - New dependency-free `HashingEmbedder` (`actrone_memory.l2.embedder`) — a
+    deterministic hashing vectorizer (`embedding_provider="hashing"`), the new
+    default. No model download, no external call.
+  - New `L1Store` / `L2Store` `Protocol`s (`actrone_memory.protocols`) — the
+    manager now depends on the store seam, not concrete backends.
+  - New config: `backend: "memory" | "redis_qdrant"` and `hashing_dimensions`.
+
+- **Provenance-typed facts v1** — every stored memory now carries **`source`**
+  (attribution: `user`/`assistant`/`tool`/`summary`/`injected`/`extracted`/
+  `reflection`/`imported`/`unknown`, or a namespaced string like `"import:crm"`)
+  and **`sensitivity`** (`none`/`low`/`pii`/`sensitive`). `inject_memory()` accepts
+  both; summaries are tagged `source="summary"`. Defaults are backwards-compatible
+  (`unknown`/`none`). New `MemorySource`/`Sensitivity` types exported.
+- **Local right-to-erasure** — `MemoryManager.erase_agent_memories(agent_id,
+  session_id=None)` hard-deletes an agent's long-term memories (and optionally a
+  session's turns). The governance seed that graduates to hosted *provable*
+  erasure. `L2Store` gains `delete_agent_memories`.
+
+- **Optional LLM fact extraction** (turns → durable facts), to the shared
+  extraction spec v1 (`docs/memory-spec/extraction.v1.md`). New
+  `actrone_memory.extraction` (`FactExtractor` seam, `OpenAIFactExtractor`,
+  `ExtractedFact`, `parse_facts`, `EXTRACTION_SPEC_VERSION`). Opt-in via
+  `MemoryConfig.extract_facts=True` (OpenAI provider); stores each fact as
+  `content_type="fact"`, `source="extracted"` with a classified `sensitivity`.
+  Exposed as `MemoryManager.extract_memories()` and auto-run on the summarise
+  cadence (cost-bounded). New `"fact"` content type.
+
+### Changed
+
+- **Default `backend` is now `"memory"`** (was implicitly Redis + Qdrant) and the
+  **default `embedding_provider` is now `"hashing"`** (was `"openai"`). Existing
+  deployments must set `ACTRONE_BACKEND=redis_qdrant` and
+  `ACTRONE_EMBEDDING_PROVIDER=openai` (+ `ACTRONE_OPENAI_API_KEY`) to keep the
+  previous behaviour. No code changes are required — the switches are read at
+  startup.
+- Qdrant collection dimensionality is now sized from the embedder in use
+  (`embedder.dimensions`) rather than a fixed `embedding_dimensions`, so the
+  hashing/local embedders provision correctly.
+
+---
+
 ## [0.2.0] — 2026-05-20
 
 ### Added

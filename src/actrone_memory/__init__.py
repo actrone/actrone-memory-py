@@ -1,4 +1,9 @@
-"""actrone-memory — Two-tier persistent memory for AI agents."""
+"""actrone-memory — Two-tier persistent memory for AI agents.
+
+Local-first by default: ``MemoryManager.create()`` runs with zero external
+services (in-memory store + a dependency-free hashing embedder, no API key).
+Set ``backend="redis_qdrant"`` and an embedding provider for the durable path.
+"""
 
 from actrone_memory.config import MemoryConfig
 from actrone_memory.exceptions import (
@@ -10,19 +15,59 @@ from actrone_memory.exceptions import (
     TokenBudgetError,
     ValidationError,
 )
+from actrone_memory.extraction import (
+    EXTRACTION_SPEC_VERSION,
+    ExtractedFact,
+    FactExtractor,
+    OpenAIFactExtractor,
+    parse_facts,
+)
+from actrone_memory.in_memory import InMemoryStore, cosine_similarity
+from actrone_memory.l2.embedder import (
+    Embedder,
+    HashingEmbedder,
+    LocalEmbedder,
+    OpenAIEmbedder,
+)
 from actrone_memory.manager import MemoryManager, create_memory_manager
-from actrone_memory.models import MemoryEntry, RetrievedContext, SessionMetadata, ToolResult, Turn
+from actrone_memory.models import (
+    ContentType,
+    MemoryEntry,
+    MemorySource,
+    RetrievedContext,
+    Sensitivity,
+    SessionMetadata,
+    ToolResult,
+    Turn,
+)
+from actrone_memory.protocols import L1Store, L2Store
 
 __version__ = "0.2.0"
 __all__ = [
     "MemoryManager",
     "MemoryConfig",
     "MemoryEntry",
+    "ContentType",
+    "MemorySource",
+    "Sensitivity",
     "RetrievedContext",
     "SessionMetadata",
     "ToolResult",
     "Turn",
     "create_memory_manager",
+    "InMemoryStore",
+    "cosine_similarity",
+    "ExtractedFact",
+    "FactExtractor",
+    "OpenAIFactExtractor",
+    "parse_facts",
+    "EXTRACTION_SPEC_VERSION",
+    "Embedder",
+    "HashingEmbedder",
+    "LocalEmbedder",
+    "OpenAIEmbedder",
+    "L1Store",
+    "L2Store",
     "ActroneMemoryError",
     "ConfigurationError",
     "EmbeddingError",
