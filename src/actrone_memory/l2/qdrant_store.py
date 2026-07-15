@@ -158,17 +158,19 @@ class QdrantStore:
         threshold: float,
         limit: int = 20,
         content_types: list[ContentType] | None = None,
+        query_text: str | None = None,
     ) -> list[MemoryEntry]:
-        """Search for memories by semantic similarity.
+        """Hybrid semantic search — dense + lexical + recency fused with RRF (Axis A3).
 
-        Ranking formula: score = relevance_weight × cosine_similarity
-                                + recency_weight × recency_score
-
-        recency_score = max(0, 1 - age_seconds / (30 × 86400))
-        Only memories with cosine_similarity ≥ threshold are returned.
+        Qdrant returns the dense (cosine) candidates over ``threshold``; when ``query_text`` is
+        given, those candidates are re-ranked by fusing the server cosine score with BM25 over the
+        content and recency via Reciprocal Rank Fusion. Without ``query_text`` (or no shared terms)
+        it degrades to the classic ``relevance × cosine + recency × recency`` blend. Only memories
+        with cosine ≥ ``threshold`` are ever returned (admission unchanged).
 
         Time complexity: O(n log n) for re-ranking n Qdrant results.
         """
+        from actrone_memory.retrieval import fuse_channels
         filters = [qmodels.FieldCondition(key="agent_id", match=qmodels.MatchValue(value=agent_id))]
         if content_types:
             filters.append(
@@ -193,19 +195,23 @@ class QdrantStore:
             raise StoreConnectionError("Qdrant", exc) from exc
 
         now_ts = datetime.now(UTC).timestamp()
-        scored: list[tuple[float, MemoryEntry]] = []
+        entries: dict[str, MemoryEntry] = {}
+        dense: list[tuple[float, str]] = []
+        recency: dict[str, float] = {}
+        documents: dict[str, str] = {}
 
         for r in response.points:
             payload = r.payload or {}
             ts_str: str = payload.get("timestamp", datetime.now(UTC).isoformat())
             entry_ts = datetime.fromisoformat(ts_str).timestamp()
-
             age_seconds = max(0.0, now_ts - entry_ts)
-            recency = max(0.0, 1.0 - age_seconds / (30 * 86400))
-            combined = self._relevance_w * r.score + self._recency_w * recency
 
-            entry = MemoryEntry(
-                id=str(r.id),
+            point_id = str(r.id)
+            recency[point_id] = max(0.0, 1.0 - age_seconds / (30 * 86400))
+            dense.append((r.score, point_id))
+            documents[point_id] = payload.get("content", "")
+            entries[point_id] = MemoryEntry(
+                id=point_id,
                 agent_id=payload.get("agent_id", agent_id),
                 session_id=payload.get("session_id", ""),
                 content=payload.get("content", ""),
@@ -218,10 +224,29 @@ class QdrantStore:
                 source=payload.get("source", "unknown"),
                 sensitivity=payload.get("sensitivity", "none"),
             )
-            scored.append((combined, entry))
 
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [entry for _, entry in scored[:limit]]
+        if not entries:
+            return []
+
+        dense_ranking = [pid for _, pid in sorted(dense, key=lambda x: x[0], reverse=True)]
+        fused_order = fuse_channels(
+            ids=list(entries.keys()),
+            dense_ranking=dense_ranking,
+            documents=documents,
+            recency=recency,
+            query_text=query_text,
+            relevance_weight=self._relevance_w,
+            recency_weight=self._recency_w,
+        )
+        if fused_order is None:
+            # No lexical signal — classic relevance × cosine + recency × recency blend.
+            blended = sorted(
+                dense,
+                key=lambda x: self._relevance_w * x[0] + self._recency_w * recency[x[1]],
+                reverse=True,
+            )
+            return [entries[pid] for _, pid in blended[:limit]]
+        return [entries[pid] for pid in fused_order[:limit]]
 
     # ------------------------------------------------------------------
     # Delete

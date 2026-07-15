@@ -46,6 +46,29 @@ def memory(mock_mm: AsyncMock) -> ActroneAutoGenMemory:
 
 
 @pytest.mark.asyncio
+async def test_build_context_returns_governed_string(mock_mm: AsyncMock) -> None:
+    # Tier-1 framework-free path: a single governed system-context block.
+    mock_mm.retrieve_context = AsyncMock(
+        return_value=MagicMock(
+            recent_turns=[],
+            episodic_memories=[
+                MemoryEntry(
+                    agent_id="agent-1",
+                    session_id="default",
+                    content="Paris is the capital of France.",
+                    content_type="summary",
+                    importance_score=0.9,
+                    token_count=10,
+                )
+            ],
+        )
+    )
+    memory = ActroneAutoGenMemory(agent_id="agent-1", session_id="default", memory_manager=mock_mm)
+    context = await memory.build_context("capital of France")
+    assert "Paris is the capital of France." in context
+
+
+@pytest.mark.asyncio
 async def test_add_text_content(memory: ActroneAutoGenMemory, mock_mm: AsyncMock) -> None:
     from autogen_core.memory import MemoryContent, MemoryMimeType
 
@@ -86,7 +109,9 @@ async def test_close_is_noop(memory: ActroneAutoGenMemory) -> None:
 
 
 @pytest.mark.asyncio
-async def test_add_non_text_content_is_noop(memory: ActroneAutoGenMemory, mock_mm: AsyncMock) -> None:
+async def test_add_non_text_content_is_noop(
+    memory: ActroneAutoGenMemory, mock_mm: AsyncMock
+) -> None:
     from autogen_core.memory import MemoryContent, MemoryMimeType
 
     content = MemoryContent(
@@ -100,6 +125,8 @@ async def test_add_non_text_content_is_noop(memory: ActroneAutoGenMemory, mock_m
 
 def test_import_error_without_autogen() -> None:
     """Verify ImportError is raised with a helpful message when autogen is absent."""
-    with patch.dict("sys.modules", {"autogen_core": None, "autogen_core.memory": None}):
-        with pytest.raises(ImportError, match="pip install actrone-memory\\[autogen\\]"):
-            ActroneAutoGenMemory(agent_id="agent-1")
+    modules = {"autogen_core": None, "autogen_core.memory": None}
+    with patch.dict("sys.modules", modules), pytest.raises(
+        ImportError, match=r"pip install actrone-memory\[autogen\]"
+    ):
+        ActroneAutoGenMemory(agent_id="agent-1")

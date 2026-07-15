@@ -44,7 +44,13 @@ def test_token_budget_error():
 
 
 def test_all_errors_inherit_from_base():
-    for cls in (ConfigurationError, EmbeddingError, MemoryNotFoundError, TokenBudgetError, ValidationError):
+    for cls in (
+        ConfigurationError,
+        EmbeddingError,
+        MemoryNotFoundError,
+        TokenBudgetError,
+        ValidationError,
+    ):
         assert issubclass(cls, ActroneMemoryError)
 
 

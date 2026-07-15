@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from actrone_memory.exceptions import EmbeddingError
 from actrone_memory.l2.embedder import CachedEmbedder, HashingEmbedder, OpenAIEmbedder

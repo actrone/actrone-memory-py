@@ -30,7 +30,10 @@ REGION = re.compile(r"#\s*region\s+(\S+)\s*\n(.*?)\n\s*#\s*endregion", re.DOTALL
 
 def extract() -> dict[str, str]:
     snippets: dict[str, str] = {}
-    for path in sorted(EXAMPLES_DIR.glob("*.py")):
+    # Top-level examples + the per-framework recipe sources under examples/frameworks/ (mirrors the
+    # TS examples/frameworks/ pattern) — each # region block becomes a doc snippet.
+    sources = sorted(EXAMPLES_DIR.glob("*.py")) + sorted((EXAMPLES_DIR / "frameworks").glob("*.py"))
+    for path in sources:
         for match in REGION.finditer(path.read_text(encoding="utf-8")):
             snippet_id, body = match.group(1), match.group(2)
             if snippet_id in snippets:
@@ -56,7 +59,7 @@ def main() -> None:
         print(f"[extract-snippets] snippets.json in sync ({len(snippets)}: {ids}) ok")
     else:
         OUT.write_text(serialized, encoding="utf-8")
-        print(f"[extract-snippets] wrote {len(snippets)} snippet(s) -> examples/snippets.json ({ids})")
+        print(f"[extract-snippets] wrote {len(snippets)} snippet(s) -> snippets.json ({ids})")
 
 
 if __name__ == "__main__":

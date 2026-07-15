@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 
 import structlog
 
@@ -10,10 +10,6 @@ from actrone_memory.exceptions import MemoryNotFoundError
 from actrone_memory.models import ContentType, MemoryEntry, SessionMetadata, Turn
 
 log = structlog.get_logger(__name__)
-
-# Recency normalisation window (30 days), identical to QdrantStore.search so the
-# blended ranking behaves the same across backends.
-_RECENCY_WINDOW_SECONDS = 30 * 86400
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -158,40 +154,39 @@ class InMemoryStore:
         threshold: float,
         limit: int = 20,
         content_types: list[ContentType] | None = None,
+        query_text: str | None = None,
     ) -> list[MemoryEntry]:
-        """Blended relevance search — same formula as :class:`QdrantStore`.
+        """Hybrid relevance search — dense + lexical + recency fused with RRF (Axis A3).
 
-        ``score = relevance_weight × cosine_similarity + recency_weight × recency``
-        with ``recency = max(0, 1 - age_seconds / (30 × 86400))``. Only memories at
-        or above ``threshold`` cosine similarity are admitted.
+        Only memories with embedding cosine ≥ ``threshold`` are admitted; among those, the ranking
+        fuses embedding cosine, BM25 over the content (when ``query_text`` is given), and recency
+        via Reciprocal Rank Fusion. Without ``query_text`` (or with no shared terms) it degrades to
+        the classic ``relevance × cosine + recency × recency`` blend, matching :class:`QdrantStore`.
 
-        Time complexity: O(n) similarity scoring + O(n log n) rank over the agent's
-        memories — acceptable for the in-process on-ramp (bounded by
-        ``max_episodic_memories``); Qdrant is the path for large corpora.
+        Time complexity: O(n) similarity scoring + O(n log n) rank over the agent's memories —
+        acceptable for the in-process on-ramp (bounded by ``max_episodic_memories``).
         """
+        from actrone_memory.retrieval import hybrid_rank
+
         bucket = self._memories.get(agent_id, [])
         if not bucket:
             return []
 
         allowed: set[str] | None = set(content_types) if content_types else None
-        now_ts = datetime.now(UTC).timestamp()
-        scored: list[tuple[float, MemoryEntry]] = []
-
-        for entry in bucket:
-            if allowed is not None and entry.content_type not in allowed:
-                continue
-            if entry.embedding is None:
-                continue
-            sim = cosine_similarity(query_embedding, entry.embedding)
-            if sim < threshold:
-                continue
-            age_seconds = max(0.0, now_ts - entry.timestamp.timestamp())
-            recency = max(0.0, 1.0 - age_seconds / _RECENCY_WINDOW_SECONDS)
-            combined = self._relevance_w * sim + self._recency_w * recency
-            scored.append((combined, entry))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [entry for _, entry in scored[:limit]]
+        candidates = [
+            entry
+            for entry in bucket
+            if allowed is None or entry.content_type in allowed
+        ]
+        return hybrid_rank(
+            candidates,
+            query_embedding,
+            query_text,
+            threshold=threshold,
+            relevance_weight=self._relevance_w,
+            recency_weight=self._recency_w,
+            limit=limit,
+        )
 
     async def delete(self, memory_id: str) -> None:
         for agent_id, bucket in self._memories.items():

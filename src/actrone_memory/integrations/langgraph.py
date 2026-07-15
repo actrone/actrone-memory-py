@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from actrone_memory.config import MemoryConfig
+from actrone_memory.integrations._context import governed_context
 from actrone_memory.manager import MemoryManager
 
 
@@ -42,6 +43,21 @@ class ActroneCheckpointer:
         if self._mm is None:
             self._mm = await MemoryManager.create(self._config)
         return self._mm
+
+    async def build_context(
+        self, query: str, *, thread_id: str = "default", token_budget: int | None = None
+    ) -> str:
+        """Governed system-context string for ``query`` (Tier 1, framework-free).
+
+        The universally-correct path: prepend the returned block to a graph node's prompt
+        regardless of framework. ``thread_id`` scopes recent-turn recency (LangGraph's session
+        equivalent). Returns ``""`` when nothing is relevant. Complements the native
+        checkpointer methods below.
+        """
+        mm = await self._get_manager()
+        return await governed_context(
+            mm, self.agent_id, thread_id, query, token_budget or self.token_budget
+        )
 
     async def aput(
         self,

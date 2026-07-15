@@ -12,7 +12,7 @@ llama_index = pytest.importorskip("llama_index", reason="llama-index-core not in
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from actrone_memory.integrations.llamaindex import ActroneLlamaMemory
-from actrone_memory.models import MemoryEntry, Turn
+from actrone_memory.models import MemoryEntry
 
 
 @pytest.fixture
@@ -45,6 +45,14 @@ def memory(mock_mm: AsyncMock) -> ActroneLlamaMemory:
         session_id="default",
         memory_manager=mock_mm,
     )
+
+
+@pytest.mark.asyncio
+async def test_build_context_returns_governed_string(memory: ActroneLlamaMemory) -> None:
+    # Tier-1 framework-free path: a single governed system-context block.
+    context = await memory.build_context("what is 2+2?")
+    assert "Arithmetic is fun." in context  # episodic memory
+    assert "What is 2+2?" in context  # recent turn
 
 
 @pytest.mark.asyncio
@@ -96,6 +104,8 @@ async def test_aget_all_delegates_to_aget(memory: ActroneLlamaMemory) -> None:
 
 
 def test_import_error_without_llamaindex() -> None:
-    with patch.dict("sys.modules", {"llama_index": None, "llama_index.core": None, "llama_index.core.memory": None}):
-        with pytest.raises(ImportError, match="pip install actrone-memory\\[llamaindex\\]"):
-            ActroneLlamaMemory(agent_id="agent-1")
+    modules = {"llama_index": None, "llama_index.core": None, "llama_index.core.memory": None}
+    with patch.dict("sys.modules", modules), pytest.raises(
+        ImportError, match=r"pip install actrone-memory\[llamaindex\]"
+    ):
+        ActroneLlamaMemory(agent_id="agent-1")

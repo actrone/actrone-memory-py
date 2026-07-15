@@ -21,7 +21,13 @@ def test_memory_entry_defaults_are_set():
 
 def test_memory_entry_importance_clamps():
     with pytest.raises(ValidationError):
-        MemoryEntry(agent_id="a", session_id="s", content="x", content_type="turn", importance_score=1.5)
+        MemoryEntry(
+            agent_id="a",
+            session_id="s",
+            content="x",
+            content_type="turn",
+            importance_score=1.5,
+        )
 
 
 def test_memory_entry_invalid_content_type():

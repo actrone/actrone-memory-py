@@ -1,0 +1,82 @@
+name: Framework Compatibility
+
+# Per-repo compat verification (vendored tooling at ci/compat-matrix/). Two layers:
+#   1. drift-gate — fast, on every PR: fails if pyproject extras / README drift from compatibility.yaml.
+#   2. version-matrix — scheduled: installs each declared framework at its range boundaries (floor /
+#      current / next) in ISOLATED jobs and runs the interface canary against the REAL SDK, so an
+#      incompatibility inside our declared range is caught here, not by a user. `next` (pre/next-major)
+#      jobs are allow_fail — early warning, not a gate.
+#
+# Vendored from the workspace ci/compat-matrix/ into this repo (per-repo split); actrone-py mirrors this.
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "compatibility.yaml"
+      - "scripts/check_compat.py"
+      - "ci/compat-matrix/**"
+      - ".github/workflows/compat-matrix.yml"
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC — catch new framework releases within a week
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE: actrone-memory-py
+
+jobs:
+  # ── Layer 1: drift gate (every PR) ──────────────────────────────────────────
+  drift-gate:
+    name: drift-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: check-compat — pyproject + README agree with compatibility.yaml
+        run: python scripts/check_compat.py
+
+  # ── Layer 2a: expand this repo's manifest into a job list (scheduled) ────────
+  emit-matrix:
+    name: emit version matrix
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      jobs: ${{ steps.emit.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - id: emit
+        run: echo "jobs=$(python ci/compat-matrix/matrix.py emit "$PACKAGE")" >> "$GITHUB_OUTPUT"
+
+  # ── Layer 2b: one isolated job per (framework, boundary), against the REAL SDK ─
+  version-matrix:
+    name: ${{ matrix.job.framework }}@${{ matrix.job.which }}
+    needs: emit-matrix
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.job.allow_fail }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job: ${{ fromJson(needs.emit-matrix.outputs.jobs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: canary — ${{ matrix.job.framework }} @ ${{ matrix.job.spec }}
+        run: >-
+          bash ci/compat-matrix/run.sh
+          "${{ matrix.job.canary }}"
+          "${{ matrix.job.spec }}"
+          "${{ matrix.job.framework }}"
+          "${{ matrix.job.which }}"

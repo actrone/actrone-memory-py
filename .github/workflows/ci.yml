@@ -27,6 +27,12 @@ jobs:
         run: |
           uv pip install --system bandit
           bandit -r src/ -ll
+      - name: check-compat — framework version drift gate
+        # Fails if pyproject extras / README drift from compatibility.yaml (the SSOT). The full
+        # per-version interface-canary matrix runs in compat-matrix.yml (scheduled).
+        run: |
+          uv pip install --system pyyaml
+          python scripts/check_compat.py
 
   test-unit:
     name: Unit Tests

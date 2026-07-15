@@ -42,6 +42,20 @@ def rm(mock_mm: AsyncMock) -> ActroneRM:
     return ActroneRM(agent_id="agent-1", k=5, memory_manager=mock_mm)
 
 
+@pytest.mark.asyncio
+async def test_build_context_renders_ranked_memories(rm: ActroneRM) -> None:
+    # Tier-1 framework-free path: retrieval-shaped adapters render ranked memories.
+    context = await rm.build_context("capital of France")
+    assert context.startswith("Relevant long-term memory:")
+    assert "- Paris is the capital of France." in context
+
+
+@pytest.mark.asyncio
+async def test_build_context_empty_when_no_memories(rm: ActroneRM, mock_mm: AsyncMock) -> None:
+    mock_mm.search_memories = AsyncMock(return_value=[])
+    assert await rm.build_context("anything") == ""
+
+
 def test_forward_single_query_returns_prediction(rm: ActroneRM) -> None:
     prediction = rm.forward("capital of France")
 
@@ -94,6 +108,7 @@ def test_default_k_is_five() -> None:
 
 
 def test_import_error_without_dspy() -> None:
-    with patch.dict("sys.modules", {"dspy": None}):
-        with pytest.raises(ImportError, match="pip install actrone-memory\\[dspy\\]"):
-            ActroneRM(agent_id="agent-1")
+    with patch.dict("sys.modules", {"dspy": None}), pytest.raises(
+        ImportError, match=r"pip install actrone-memory\[dspy\]"
+    ):
+        ActroneRM(agent_id="agent-1")

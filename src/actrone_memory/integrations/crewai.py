@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from actrone_memory.config import MemoryConfig
+from actrone_memory.integrations._context import governed_context
 from actrone_memory.manager import MemoryManager
 
 
@@ -41,6 +42,18 @@ class ActroneCrewMemory:
         if self._mm is None:
             self._mm = await MemoryManager.create(self._config)
         return self._mm
+
+    async def build_context(self, query: str, *, token_budget: int | None = None) -> str:
+        """Governed system-context string for ``query`` (Tier 1, framework-free).
+
+        The universally-correct path: prepend the returned block to a task description or agent
+        backstory regardless of framework. Returns ``""`` when nothing is relevant. Complements
+        the native CrewAI ``save`` / ``search`` methods below.
+        """
+        mm = await self._get_manager()
+        return await governed_context(
+            mm, self.agent_id, self.session_id, query, token_budget or self.token_budget
+        )
 
     async def save(self, value: Any, metadata: dict[str, Any] | None = None) -> None:
         """Called by CrewAI to persist agent output."""

@@ -28,6 +28,7 @@ from __future__ import annotations
 from typing import Any
 
 from actrone_memory.config import MemoryConfig
+from actrone_memory.integrations._context import format_memories
 from actrone_memory.manager import MemoryManager
 
 
@@ -75,6 +76,17 @@ class ActroneRetriever:
         if self._mm is None:
             self._mm = await MemoryManager.create(self._config)
         return self._mm
+
+    async def build_context(self, query: str, *, top_k: int | None = None) -> str:
+        """Governed long-term-memory block for ``query`` (Tier 1, framework-free).
+
+        The universally-correct path: prepend the returned block to any prompt regardless of
+        framework. Renders the same relevance-ranked memories as :meth:`run_async` into a single
+        system-prompt block; returns ``""`` when nothing is relevant.
+        """
+        mm = await self._get_manager()
+        memories = await mm.search_memories(self._agent_id, query, limit=top_k or self._top_k)
+        return format_memories(memories)
 
     async def run_async(self, query: str, top_k: int | None = None) -> dict[str, Any]:
         """Async version of ``run`` for use in async Haystack pipelines."""

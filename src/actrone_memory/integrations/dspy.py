@@ -39,6 +39,7 @@ import concurrent.futures
 from typing import Any
 
 from actrone_memory.config import MemoryConfig
+from actrone_memory.integrations._context import format_memories
 from actrone_memory.manager import MemoryManager
 
 
@@ -97,6 +98,17 @@ class ActroneRM:
         mm = await self._get_manager()
         memories = await mm.search_memories(self._agent_id, query, limit=k)
         return [m.content for m in memories]
+
+    async def build_context(self, query: str, *, limit: int | None = None) -> str:
+        """Governed long-term-memory block for ``query`` (Tier 1, framework-free).
+
+        The universally-correct path: prepend the returned block to any prompt regardless of
+        framework. Renders the same relevance-ranked memories as :meth:`forward` into a single
+        system-prompt block; returns ``""`` when nothing is relevant.
+        """
+        mm = await self._get_manager()
+        memories = await mm.search_memories(self._agent_id, query, limit=limit or self.k)
+        return format_memories(memories)
 
     def forward(
         self,

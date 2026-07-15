@@ -5,13 +5,18 @@ import math
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import structlog
-from redis.asyncio import Redis
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
 
 from actrone_memory.exceptions import EmbeddingError
+
+if TYPE_CHECKING:
+    # `redis` is an OPTIONAL extra (H5) — only the CachedEmbedder (redis_qdrant backend) uses it,
+    # and then only as a constructor type hint. Keeping it out of runtime imports means the
+    # local-first install (`pip install actrone-memory`) pulls no redis.
+    from redis.asyncio import Redis
 
 log = structlog.get_logger(__name__)
 
@@ -246,6 +251,72 @@ class HashingEmbedder(Embedder):
         return [self._embed_one(t) for t in texts]
 
 
+class FastEmbedEmbedder(Embedder):
+    """In-process ONNX dense embedder via ``fastembed`` (onnxruntime — no torch, no GPU).
+
+    The default "real" dense tier: local-first, zero-egress after a one-time model download,
+    no API key. The default model ``BAAI/bge-small-en-v1.5`` (384-dim) is small (~130 MB ONNX),
+    lazily downloaded + cached on first construction, and **offline thereafter** — so the
+    library's "no-egress" promise holds for every call after the initial fetch.
+
+    Requires: ``pip install actrone-memory[onnx]``. CPU-bound encoding is offloaded to a thread
+    pool so it never blocks the event loop.
+    """
+
+    _DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
+
+    def __init__(self, model_name: str = _DEFAULT_MODEL, cache_dir: str | None = None) -> None:
+        try:
+            from fastembed import TextEmbedding
+        except ImportError as exc:
+            raise ImportError("Install onnx extras: pip install actrone-memory[onnx]") from exc
+
+        self._model_name = model_name
+        # Model files download on first construction (cached under ``cache_dir``); the object is
+        # offline-only afterwards. A fetch failure (air-gapped first run) raises here so the
+        # caller (build_local_embedder) can fall back to hashing and keep "no-egress" literal.
+        self._model = TextEmbedding(model_name=model_name, cache_dir=cache_dir)
+        self._dimensions = self._resolve_dimensions(TextEmbedding, model_name, self._model)
+
+    @staticmethod
+    def _resolve_dimensions(text_embedding_cls: Any, model_name: str, model: Any) -> int:  # noqa: ANN401
+        """Resolve the model's vector width from fastembed's catalogue, probing as a fallback."""
+        try:
+            catalogue = list(text_embedding_cls.list_supported_models())
+        except Exception:  # catalogue availability/shape varies by version — probe instead.
+            catalogue = []
+        for desc in catalogue:
+            dim = desc.get("dim") if isinstance(desc, dict) else None
+            if desc.get("model") == model_name and isinstance(dim, int) and dim > 0:
+                return dim
+        first = next(iter(model.embed(["probe"])))
+        return len(first)
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
+    @property
+    def dimensions(self) -> int:
+        return self._dimensions
+
+    async def embed(self, text: str) -> list[float]:
+        return (await self.embed_batch([text]))[0]
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+
+        def _encode() -> list[list[float]]:
+            # fastembed's .embed() yields one numpy array per input, in order.
+            return [vector.tolist() for vector in self._model.embed(texts)]
+
+        return await loop.run_in_executor(None, _encode)
+
+
 class LocalEmbedder(Embedder):
     """sentence-transformers/all-MiniLM-L6-v2 for offline / free usage (384-dim).
 
@@ -283,3 +354,47 @@ class LocalEmbedder(Embedder):
         encode = partial(self._model.encode, texts, convert_to_numpy=True)
         embeddings = await loop.run_in_executor(None, encode)
         return [e.tolist() for e in embeddings]
+
+
+def build_local_embedder(
+    *, hashing_dimensions: int = 256, model_name: str | None = None
+) -> Embedder:
+    """Return the best available **local, offline, zero-egress** embedder, degrading gracefully.
+
+    Tier order — the graceful chain behind ``embedding_provider="local"`` (the default):
+
+    1. **In-process ONNX** (:class:`FastEmbedEmbedder`, ``[onnx]`` extra) — dense, no torch. The
+       preferred "real" recall tier.
+    2. **sentence-transformers** (:class:`LocalEmbedder`, ``[local]`` extra) — dense, torch-backed.
+    3. **Hashing** (:class:`HashingEmbedder`) — dependency-free lexical fallback that always works.
+
+    Each tier is tried in turn; an ``ImportError`` (library absent) *or* a runtime model-fetch
+    failure (air-gapped first run) falls through to the next. This guarantees a working embedder
+    with **no API key and no unavoidable network call** — the model download is one-time and the
+    hashing tier needs none — so the "local-first / no-egress" promise always holds.
+    """
+    try:
+        onnx = FastEmbedEmbedder(model_name) if model_name else FastEmbedEmbedder()
+        log.info(
+            "memory.embedder.local",
+            tier="fastembed-onnx",
+            model=onnx.model_name,
+            dim=onnx.dimensions,
+        )
+        return onnx
+    except Exception as exc:  # ImportError (library absent) OR model-fetch failure (air-gapped)
+        log.info("memory.embedder.local.skip", tier="fastembed-onnx", reason=str(exc))
+
+    try:
+        st = LocalEmbedder()
+        log.info("memory.embedder.local", tier="sentence-transformers", dim=st.dimensions)
+        return st
+    except Exception as exc:  # ImportError (library absent) OR model-fetch failure (air-gapped)
+        log.info("memory.embedder.local.skip", tier="sentence-transformers", reason=str(exc))
+
+    log.warning(
+        "memory.embedder.local.hashing",
+        note="no local dense embedder available; using lexical hashing "
+        "(install actrone-memory[onnx] for dense recall)",
+    )
+    return HashingEmbedder(dimensions=hashing_dimensions)

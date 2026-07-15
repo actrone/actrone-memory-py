@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from actrone_memory.config import MemoryConfig
+from actrone_memory.integrations._context import governed_context
 from actrone_memory.manager import MemoryManager
 
 if TYPE_CHECKING:
@@ -72,6 +73,18 @@ class ActroneAutoGenMemory:
         if self._mm is None:
             self._mm = await MemoryManager.create(self._config)
         return self._mm
+
+    async def build_context(self, query: str, *, token_budget: int | None = None) -> str:
+        """Governed system-context string for ``query`` (Tier 1, framework-free).
+
+        The universally-correct path: prepend the returned block to any prompt regardless of
+        framework. Returns ``""`` when nothing is relevant. Complements the native AutoGen
+        ``Memory`` protocol methods below.
+        """
+        mm = await self._get_manager()
+        return await governed_context(
+            mm, self._agent_id, self._session_id, query, token_budget or self._token_budget
+        )
 
     async def add(
         self,

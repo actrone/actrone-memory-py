@@ -4,7 +4,6 @@ import pytest
 import pytest_asyncio
 from testcontainers.qdrant import QdrantContainer
 
-from actrone_memory.exceptions import MemoryNotFoundError
 from actrone_memory.l2.qdrant_store import QdrantStore
 from actrone_memory.models import MemoryEntry
 

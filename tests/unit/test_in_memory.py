@@ -255,9 +255,11 @@ async def test_close_is_noop():
 async def test_local_first_create_needs_no_services_or_key():
     """The headline parity guarantee: create() with all-default config runs with
     no Redis, no Qdrant, and no API key, and completes a full store→retrieve cycle."""
-    cfg = MemoryConfig()  # defaults: backend="memory", provider="hashing"
+    cfg = MemoryConfig()  # defaults: backend="memory", provider="local"
     assert cfg.backend == "memory"
-    assert cfg.embedding_provider == "hashing"
+    # "local" is the default; with no [onnx]/[local] extra installed it degrades gracefully to the
+    # dependency-free hashing embedder, so the "no services, no API key" guarantee still holds.
+    assert cfg.embedding_provider == "local"
 
     async with await MemoryManager.create(cfg) as mm:
         await mm.store_turn("agent-1", "sess-1", "My favourite colour is blue.", "Noted.")

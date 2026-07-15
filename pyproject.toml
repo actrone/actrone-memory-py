@@ -23,9 +23,9 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.3,<3",
-    "redis[hiredis]>=5.0,<6",
-    "qdrant-client>=1.9,<2",
-    "openai>=1.30,<2",
+    # H5: redis / qdrant-client / openai are NOT base deps — the default backend is the
+    # zero-service in-memory + hashing path, so `pip install actrone-memory` pulls none of them.
+    # Install the `redis` / `qdrant` / `openai` extras (or `production`) for the durable backend.
     "structlog>=24.1,<25",
     "tiktoken>=0.7,<1",
     "tenacity>=8.3,<10",
@@ -36,14 +36,41 @@ dependencies = [
     "typing-extensions>=4.12,<5",
 ]
 
+[project.scripts]
+# Non-destructive onboarding CLI — the Python counterpart of `npx @actrone/memory add`.
+actrone-memory = "actrone_memory.cli:main"
+
 [project.optional-dependencies]
+# H5: the durable-backend / managed-embedding dependencies as opt-in extras (kept out of the
+# local-first base install). `production` is the convenience bundle for the redis_qdrant backend.
+redis       = ["redis[hiredis]>=5.0,<6"]
+qdrant      = ["qdrant-client>=1.9,<2"]
+openai      = ["openai>=1.30,<3"]
+production  = ["actrone-memory[redis]", "actrone-memory[qdrant]", "actrone-memory[openai]"]
+# H1: widened to span 0.x AND the 1.x majors these frameworks shipped in 2026 — the adapters
+# target stable, long-lived interfaces (StateGraph, llama-index-core Memory), so the pre-1.0 caps
+# would have forced users off their current 1.x installs. EXCEPTION: langchain stays <1 — its
+# `BaseMemory` adapter binds to `langchain_core.memory`, removed in langchain 1.x (the compat-matrix
+# canary caught this). See compatibility.yaml. Ranges are SSOT'd there; check_compat.py gates drift.
 langchain   = ["langchain>=0.2,<1", "langchain-core>=0.2,<1"]
-langgraph   = ["langgraph>=0.1,<1"]
-crewai      = ["crewai>=0.30,<1"]
+langgraph   = ["langgraph>=0.1,<2"]
+crewai      = ["crewai>=0.30,<2"]
 autogen     = ["autogen-agentchat>=0.4,<1", "autogen-core>=0.4,<1"]
-llamaindex  = ["llama-index-core>=0.10,<1"]
+llamaindex  = ["llama-index-core>=0.10,<2"]
 haystack    = ["haystack-ai>=2.0,<3"]
 dspy        = ["dspy-ai>=2.4,<3"]
+agno        = ["agno>=1.0,<2"]
+smolagents  = ["smolagents>=1.0,<2"]
+strands     = ["strands-agents>=1.0,<2"]
+openai_agents             = ["openai-agents>=0.1,<1"]
+pydantic_ai               = ["pydantic-ai>=0.4,<2"]
+claude_agent_sdk          = ["claude-agent-sdk>=0.1,<1"]
+semantic_kernel           = ["semantic-kernel>=1.0,<2"]
+google_adk                = ["google-adk>=1.0,<2"]
+microsoft_agent_framework = ["agent-framework-core>=1.0,<2"]
+# In-process ONNX dense embedder (onnxruntime, no torch) — the preferred "local" recall tier.
+onnx        = ["fastembed>=0.7,<1"]
+# sentence-transformers is the heavier torch-backed local tier (second in the graceful chain).
 local       = ["sentence-transformers>=3.0,<4", "torch>=2.3"]
 all = [
     "actrone-memory[langchain]",
@@ -53,6 +80,17 @@ all = [
     "actrone-memory[llamaindex]",
     "actrone-memory[haystack]",
     "actrone-memory[dspy]",
+    "actrone-memory[agno]",
+    "actrone-memory[smolagents]",
+    "actrone-memory[strands]",
+    "actrone-memory[openai_agents]",
+    "actrone-memory[pydantic_ai]",
+    "actrone-memory[claude_agent_sdk]",
+    "actrone-memory[semantic_kernel]",
+    "actrone-memory[google_adk]",
+    "actrone-memory[microsoft_agent_framework]",
+    "actrone-memory[production]",
+    "actrone-memory[onnx]",
     "actrone-memory[local]",
 ]
 dev = [
@@ -65,6 +103,7 @@ dev = [
     "httpx>=0.27,<1",
     "respx>=0.21,<1",
     "bandit>=1.7,<2",
+    "pyyaml>=6.0,<7",  # compat drift-gate + interface canaries (scripts/check_compat.py)
 ]
 # API-reference generation (Public-Domain Cutover Runbook Phase 6, item 4). Sphinx autodoc renders the
 # reference from the package source. Build: `sphinx-build -b html docs docs/_build/html`.
@@ -100,6 +139,11 @@ select = ["E", "F", "I", "N", "W", "UP", "ASYNC", "S", "B", "A", "C4", "RET", "S
 #        so hoisting typing imports into a TYPE_CHECKING block breaks validation.
 ignore = ["S101", "A002", "TC001", "TC002", "TC003"]
 
+[tool.ruff.lint.per-file-ignores]
+# Contract tests gate framework-dependent imports behind `pytest.importorskip(...)`, which is a
+# statement before the imports — E402 is intentional and idiomatic for this pattern.
+"tests/contract/*" = ["E402"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
@@ -120,8 +164,17 @@ module = [
     "haystack.*",
     "dspy.*",
     "llama_index.*",
+    "agent_framework.*",
+    "google.adk.*",
+    "google.genai.*",
     "sentence_transformers.*",
     "torch.*",
+    "fastembed.*",
+    "mem0.*",
+    "zep_cloud.*",
+    "letta_client.*",
+    "redis.*",
+    "qdrant_client.*",
 ]
 ignore_missing_imports = true
 

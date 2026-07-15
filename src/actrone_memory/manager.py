@@ -4,23 +4,21 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 import structlog
-from redis.asyncio import Redis
 
 from actrone_memory.config import MemoryConfig
 from actrone_memory.exceptions import ConfigurationError, TokenBudgetError, ValidationError
 from actrone_memory.extraction import FactExtractor, OpenAIFactExtractor
 from actrone_memory.in_memory import InMemoryStore
-from actrone_memory.l1.redis_store import RedisStore
 from actrone_memory.l2.embedder import (
     CachedEmbedder,
     Embedder,
     HashingEmbedder,
-    LocalEmbedder,
     OpenAIEmbedder,
+    build_local_embedder,
 )
-from actrone_memory.l2.qdrant_store import QdrantStore
 from actrone_memory.metrics import (
     background_task_failed_total,
     background_task_in_flight,
@@ -34,6 +32,13 @@ from actrone_memory.models import (
     Turn,
 )
 from actrone_memory.protocols import L1Store, L2Store
+from actrone_memory.rerank import CrossEncoderReranker, build_reranker
+
+if TYPE_CHECKING:
+    # `redis` / `qdrant-client` are OPTIONAL extras (H5) — only the durable `redis_qdrant` backend
+    # imports them, and it does so lazily inside `create()`. Keeping them out of module-load imports
+    # means the local-first install (`pip install actrone-memory`) needs neither Redis nor Qdrant.
+    from redis.asyncio import Redis
 
 log = structlog.get_logger(__name__)
 
@@ -78,6 +83,7 @@ class MemoryManager:
         config: MemoryConfig,
         summariser: _Summariser | None = None,
         extractor: FactExtractor | None = None,
+        reranker: CrossEncoderReranker | None = None,
     ) -> None:
         self._l1 = l1
         self._l2 = l2
@@ -85,6 +91,7 @@ class MemoryManager:
         self._cfg = config
         self._summariser = summariser
         self._extractor = extractor
+        self._reranker = reranker
         # Strong references to background tasks. Without these, asyncio's GC
         # may collect the underlying task object mid-execution and silently
         # drop the work. close() drains this set before shutting down stores.
@@ -223,7 +230,10 @@ class MemoryManager:
             query_embedding=query_embedding,
             threshold=self._cfg.relevance_threshold,
             limit=self._cfg.max_episodic_memories,
+            query_text=query if self._cfg.hybrid_retrieval else None,
         )
+        # Phase 3b — optional cross-encoder rerank over the top-K (precision lift; A4).
+        episodic_memories = await self._maybe_rerank(query, episodic_memories)
 
         # Phase 2 — budget allocation.
         episodic_budget = int(token_budget * self._cfg.budget_fraction_episodic)
@@ -414,12 +424,26 @@ class MemoryManager:
             raise ValidationError("limit", "must be ≥ 1")
 
         embedding = await self._embedder.embed(query)
-        return await self._l2.search(
+        # Over-fetch when reranking so the cross-encoder has a candidate pool to reorder (A4).
+        fetch_limit = max(limit, self._cfg.rerank_top_k) if self._reranker else limit
+        candidates = await self._l2.search(
             agent_id=agent_id,
             query_embedding=embedding,
             threshold=self._cfg.relevance_threshold,
-            limit=limit,
+            limit=fetch_limit,
+            query_text=query if self._cfg.hybrid_retrieval else None,
         )
+        reranked = await self._maybe_rerank(query, candidates)
+        return reranked[:limit]
+
+    async def _maybe_rerank(
+        self, query: str, entries: list[MemoryEntry]
+    ) -> list[MemoryEntry]:
+        """Apply the optional cross-encoder rerank over the top-K candidates (A4). No-op when the
+        reranker is disabled/unavailable, so callers always get a valid ordering."""
+        if self._reranker is None or not entries:
+            return entries
+        return await self._reranker.rerank(query, entries, top_k=self._cfg.rerank_top_k)
 
     async def get_session_metadata(self, agent_id: str, session_id: str) -> SessionMetadata | None:
         """Return basic stats about a session (turn count, created_at, last_active).
@@ -695,6 +719,7 @@ class MemoryManager:
 
         raw_embedder, summariser = cls._build_embedder(cfg)
         extractor = cls._build_extractor(cfg)
+        reranker = build_reranker(enabled=cfg.rerank_enabled, model_name=cfg.rerank_model)
 
         if cfg.backend == "memory":
             # Zero-service local-first path. The hashing embedder is deterministic,
@@ -706,12 +731,24 @@ class MemoryManager:
                 recency_weight=cfg.recency_weight,
             )
             log.info("memory.backend.local", embedding_provider=cfg.embedding_provider)
-            return cls(store, store, raw_embedder, cfg, summariser, extractor)
+            return cls(store, store, raw_embedder, cfg, summariser, extractor, reranker)
 
         # ── Durable production backend: Redis L1 + Qdrant L2 ──────────────
-        # Shared Redis client for both the session store and the embedding cache.
-        from redis.asyncio.connection import ConnectionPool
+        # `redis` + `qdrant-client` are optional extras (H5) — imported lazily here so the
+        # local-first install never pulls them. A clear message points at the extra when missing.
+        try:
+            from redis.asyncio import Redis
+            from redis.asyncio.connection import ConnectionPool
 
+            from actrone_memory.l1.redis_store import RedisStore
+            from actrone_memory.l2.qdrant_store import QdrantStore
+        except ImportError as exc:  # pragma: no cover - exercised via import guard test
+            raise ConfigurationError(
+                "backend='redis_qdrant' requires the redis + qdrant extras: "
+                "pip install actrone-memory[redis,qdrant]  (or [production])"
+            ) from exc
+
+        # Shared Redis client for both the session store and the embedding cache.
         pool = ConnectionPool.from_url(
             cfg.redis_url,
             decode_responses=False,
@@ -745,7 +782,7 @@ class MemoryManager:
             timeout=cfg.qdrant_timeout,
         )
 
-        return cls(l1, l2, embedder, cfg, summariser, extractor)
+        return cls(l1, l2, embedder, cfg, summariser, extractor, reranker)
 
     @staticmethod
     def _build_extractor(cfg: MemoryConfig) -> FactExtractor | None:
@@ -779,8 +816,9 @@ class MemoryManager:
                 _OpenAISummariser(api_key=api_key, model=cfg.summarisation_model),
             )
         if cfg.embedding_provider == "local":
-            return LocalEmbedder(), None
-        # "hashing" — the dependency-free, offline default.
+            # Graceful local chain (default): in-process ONNX → sentence-transformers → hashing.
+            return build_local_embedder(hashing_dimensions=cfg.hashing_dimensions), None
+        # "hashing" — the dependency-free, deterministic, fully-offline lexical embedder (explicit).
         return HashingEmbedder(dimensions=cfg.hashing_dimensions), None
 
     async def close(self) -> None:

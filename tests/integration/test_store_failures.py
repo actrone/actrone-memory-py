@@ -20,7 +20,7 @@ import pytest_asyncio
 from testcontainers.qdrant import QdrantContainer
 from testcontainers.redis import RedisContainer
 
-from actrone_memory.exceptions import EmbeddingError
+from actrone_memory.exceptions import EmbeddingError, StoreConnectionError
 from actrone_memory.l1.redis_store import RedisStore
 from actrone_memory.l2.embedder import CachedEmbedder, Embedder
 from actrone_memory.l2.qdrant_store import QdrantStore
@@ -35,7 +35,9 @@ pytestmark = pytest.mark.integration
 class _StubEmbedder(Embedder):
     """Deterministic embedder used to isolate cache-vs-inner failure modes."""
 
-    def __init__(self, vector: list[float] | None = None, raises: type[BaseException] | None = None) -> None:
+    def __init__(
+        self, vector: list[float] | None = None, raises: type[BaseException] | None = None
+    ) -> None:
         self._vector = vector or [0.1, 0.2, 0.3, 0.4]
         self._raises = raises
         self.calls = 0
@@ -102,14 +104,16 @@ async def test_redis_recovers_after_restart(redis_store_recoverable):
     for _ in range(15):
         await asyncio.sleep(1)
         try:
-            from redis.asyncio import Redis as _R
+            from redis.asyncio import Redis as _Redis
+            from redis.exceptions import RedisError
             host = container.get_container_host_ip()
             port = container.get_exposed_port(6379)
-            probe: _R = _R.from_url(f"redis://{host}:{port}", socket_timeout=1.0)
+            probe: _Redis = _Redis.from_url(f"redis://{host}:{port}", socket_timeout=1.0)
             await probe.ping()
             await probe.aclose()
             break
-        except Exception:
+        except (OSError, RedisError):
+            # Readiness poll: connection/timeout errors are expected until the container is back.
             continue
     else:
         pytest.skip("Redis container did not come back within 15s — likely a slow CI host")
@@ -161,7 +165,8 @@ async def test_qdrant_rejects_wrong_dimension_fast(qdrant_store_with_4dim: Qdran
     )
 
     start = asyncio.get_event_loop().time()
-    with pytest.raises(Exception):  # UnexpectedResponse is the transient class
+    # upsert wraps any client failure (here a 4xx UnexpectedResponse) in StoreConnectionError.
+    with pytest.raises(StoreConnectionError):
         await qdrant_store_with_4dim.upsert(entry)
     elapsed = asyncio.get_event_loop().time() - start
 

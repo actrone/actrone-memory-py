@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from actrone_memory.config import MemoryConfig
 from actrone_memory.exceptions import TokenBudgetError, ValidationError
 from actrone_memory.manager import MemoryManager, create_memory_manager
-from actrone_memory.models import MemoryEntry, RetrievedContext, SessionMetadata, Turn
-
+from actrone_memory.models import MemoryEntry, SessionMetadata, Turn
 from tests.conftest import ConstantEmbedder
 
 
-def _make_manager(cfg: MemoryConfig, turns: list[Turn], memories: list[MemoryEntry]) -> MemoryManager:
+def _make_manager(
+    cfg: MemoryConfig, turns: list[Turn], memories: list[MemoryEntry]
+) -> MemoryManager:
     l1 = AsyncMock()
     l1.get_recent_turns.return_value = turns
     l1.turn_count.return_value = len(turns)
@@ -212,7 +214,6 @@ async def test_prune_memories_within_budget(fake_config: MemoryConfig):
 
 @pytest.mark.asyncio
 async def test_auto_summarise_triggered_above_threshold(fake_config: MemoryConfig):
-    import asyncio as _asyncio
 
     fake_config.auto_summarise = True
     fake_config.summarise_after_turns = 3
@@ -275,7 +276,7 @@ async def test_summarise_session_swallows_exceptions(fake_config: MemoryConfig):
 @pytest.mark.asyncio
 async def test_create_memory_manager_context_manager(fake_config: MemoryConfig):
     mm = _make_manager(fake_config, [], [])
-    with patch("actrone_memory.manager.MemoryManager.create", return_value=mm) as mock_create:
+    with patch("actrone_memory.manager.MemoryManager.create", return_value=mm):
         async with create_memory_manager(fake_config) as manager:
             assert manager is mm
         mm._l1.close.assert_called_once()

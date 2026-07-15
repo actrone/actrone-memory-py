@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from actrone_memory.models import Sensitivity
 
@@ -94,3 +95,62 @@ _SUPPORT = EvalCase(
 
 #: The default bundled benchmark. Import and extend for domain-specific evals.
 DEFAULT_DATASET: list[EvalCase] = [_ASSISTANT, _SUPPORT]
+
+
+def load_cases(path: str) -> list[EvalCase]:
+    """Load evaluation cases from a JSON file so external benchmarks (LOCOMO, LongMemEval) can drive
+    the same recall@k / precision@k / MRR harness (Gate E). The file is a JSON list of case
+    objects::
+
+        [{"name": "...", "agent_id": "...",
+          "memories":  [{"id": "m1", "content": "...", "sensitivity": "none"}],
+          "queries":   [{"text": "...", "relevant_ids": ["m1"]}],
+          "distractors": [{"id": "d1", "content": "..."}]}]
+
+    A tiny converter turns each upstream benchmark (whose evidence/answer ids become
+    ``relevant_ids``)
+    into this shape, keeping the metric + the harness identical across datasets — the reproducible
+    results table Gate E requires. Raises ``ValueError`` on a malformed file.
+    """
+    import json
+    from pathlib import Path
+
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("dataset file must be a JSON list of case objects")
+    cases: list[EvalCase] = []
+    for i, c in enumerate(raw):
+        if not isinstance(c, dict) or "agent_id" not in c:
+            raise ValueError(f"case {i}: must be an object with an 'agent_id'")
+        cases.append(_case_from_dict(c, i))
+    return cases
+
+
+def _mem_from_dict(d: dict[str, Any], where: str) -> MemoryItem:
+    if "id" not in d or "content" not in d:
+        raise ValueError(f"{where}: memory needs 'id' and 'content'")
+    return MemoryItem(
+        id=str(d["id"]),
+        content=str(d["content"]),
+        sensitivity=d.get("sensitivity", "none"),
+        source=str(d.get("source", "imported")),
+    )
+
+
+def _case_from_dict(c: dict[str, Any], i: int) -> EvalCase:
+    memories = [_mem_from_dict(m, f"case {i}") for m in c.get("memories", [])]
+    distractors = [_mem_from_dict(m, f"case {i} distractor") for m in c.get("distractors", [])]
+    queries = []
+    for q in c.get("queries", []):
+        if "text" not in q or "relevant_ids" not in q:
+            raise ValueError(f"case {i}: query needs 'text' and 'relevant_ids'")
+        queries.append(
+            Query(text=str(q["text"]), relevant_ids=frozenset(map(str, q["relevant_ids"])))
+        )
+    return EvalCase(
+        agent_id=str(c["agent_id"]),
+        memories=memories,
+        queries=queries,
+        name=str(c.get("name", "")),
+        distractors=distractors,
+    )

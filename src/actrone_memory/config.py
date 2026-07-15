@@ -14,10 +14,11 @@ class MemoryConfig(BaseSettings):
     Values are read from environment variables with the ``ACTRONE_`` prefix.
     You can also pass values directly when constructing this object.
 
-    Required when ``embedding_provider="openai"`` (the default):
+    Required only when ``embedding_provider="openai"``:
         ACTRONE_OPENAI_API_KEY
 
-    All other settings have sensible defaults.
+    All other settings have sensible defaults. The default provider is ``"local"`` — a
+    local-first, zero-egress dense embedder that needs no API key (see below).
     """
 
     model_config = SettingsConfigDict(env_prefix="ACTRONE_", env_file=".env", extra="ignore")
@@ -43,10 +44,12 @@ class MemoryConfig(BaseSettings):
     qdrant_timeout: float = 10.0
 
     # ── Embedding ────────────────────────────────────────────────────────
-    # "hashing" (default): dependency-free, deterministic, offline, no API key.
+    # "local" (default): best available local, offline, zero-egress dense embedder, degrading
+    #   gracefully — in-process ONNX (fastembed, [onnx] extra) → sentence-transformers ([local]
+    #   extra) → dependency-free lexical hashing. No API key; one-time model download, then offline.
     # "openai": text-embedding-3-small (needs ACTRONE_OPENAI_API_KEY).
-    # "local": sentence-transformers all-MiniLM-L6-v2 (needs the [local] extra).
-    embedding_provider: Literal["openai", "local", "hashing"] = "hashing"
+    # "hashing": force the dependency-free, deterministic, fully-offline lexical embedder.
+    embedding_provider: Literal["openai", "local", "hashing"] = "local"
     openai_api_key: SecretStr | None = None
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
@@ -69,6 +72,19 @@ class MemoryConfig(BaseSettings):
     relevance_threshold: float = 0.72
     relevance_weight: float = 0.7  # recency_weight = 1 - relevance_weight
     recency_weight: float = 0.3
+    # Hybrid retrieval (Axis A3): among the threshold-admitted candidates, fuse the embedding
+    # (dense) ranking with a BM25 (lexical) ranking and recency via Reciprocal Rank Fusion, so an
+    # exact-keyword match the embedder under-ranks still surfaces. Admission (cosine ≥ threshold) is
+    # unchanged. Set False to force the classic single-channel dense+recency blend.
+    hybrid_retrieval: bool = True
+
+    # Cross-encoder reranking (Axis A4, opt-in). A cross-encoder rescores (query, memory) pairs
+    # jointly — more precise than the embedder, but O(K) inferences, so it only reorders the top
+    # ``rerank_top_k`` of an over-fetched set. Needs the [onnx] extra; degrades to the un-reranked
+    # order if unavailable. Off by default (adds a model download + per-query latency).
+    rerank_enabled: bool = False
+    rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    rerank_top_k: int = 20
 
     # ── Fact extraction (LLM-gated, opt-in) ──────────────────────────────
     # When True *and* an LLM embedder/summariser is configured (OpenAI provider),

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock
 
 from actrone_memory.config import MemoryConfig
-from actrone_memory.l1.redis_store import RedisStore
 from actrone_memory.l2.embedder import Embedder
-from actrone_memory.l2.qdrant_store import QdrantStore
-from actrone_memory.manager import MemoryManager
 from actrone_memory.models import MemoryEntry, Turn
+
+# NOTE: redis/qdrant are OPTIONAL extras (H5) — do NOT import RedisStore/QdrantStore at collection
+# time here, or every test run without the durable-backend extras (e.g. the local-first path and the
+# compat-matrix jobs) fails to collect. Integration tests that need them import them lazily.
 
 
 @pytest.fixture

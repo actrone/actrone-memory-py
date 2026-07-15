@@ -9,7 +9,7 @@ import pytest
 
 haystack = pytest.importorskip("haystack", reason="haystack-ai not installed")
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from actrone_memory.integrations.haystack import ActroneRetriever, ActroneWriter
 from actrone_memory.models import MemoryEntry
@@ -49,6 +49,14 @@ def mock_mm_writer() -> AsyncMock:
 @pytest.fixture
 def retriever(mock_mm_retriever: AsyncMock) -> ActroneRetriever:
     return ActroneRetriever(agent_id="agent-1", top_k=5, memory_manager=mock_mm_retriever)
+
+
+@pytest.mark.asyncio
+async def test_retriever_build_context_renders_ranked_memories(retriever: ActroneRetriever) -> None:
+    # Tier-1 framework-free path: retrieval-shaped adapters render ranked memories.
+    context = await retriever.build_context("capital of France")
+    assert context.startswith("Relevant long-term memory:")
+    assert "- Paris is the capital of France." in context
 
 
 @pytest.fixture
@@ -106,10 +114,12 @@ async def test_retriever_metadata_contains_memory_id(
 
 
 def test_import_error_without_haystack() -> None:
-    with patch.dict("sys.modules", {"haystack": None}):
-        with pytest.raises(ImportError, match="pip install actrone-memory\\[haystack\\]"):
-            ActroneRetriever(agent_id="agent-1")
+    with patch.dict("sys.modules", {"haystack": None}), pytest.raises(
+        ImportError, match=r"pip install actrone-memory\[haystack\]"
+    ):
+        ActroneRetriever(agent_id="agent-1")
 
-    with patch.dict("sys.modules", {"haystack": None}):
-        with pytest.raises(ImportError, match="pip install actrone-memory\\[haystack\\]"):
-            ActroneWriter(agent_id="agent-1")
+    with patch.dict("sys.modules", {"haystack": None}), pytest.raises(
+        ImportError, match=r"pip install actrone-memory\[haystack\]"
+    ):
+        ActroneWriter(agent_id="agent-1")

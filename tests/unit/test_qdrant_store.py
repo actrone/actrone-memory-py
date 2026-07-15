@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch, call
 
 from actrone_memory.exceptions import MemoryNotFoundError, StoreConnectionError
 from actrone_memory.l2.qdrant_store import QdrantStore
@@ -94,7 +95,7 @@ async def test_upsert_batch_no_op_on_empty_list():
 @pytest.mark.asyncio
 async def test_search_returns_ranked_entries():
     client = AsyncMock()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
 
     mock_result = MagicMock()
     mock_result.id = "mem-1"
@@ -224,10 +225,11 @@ async def test_upsert_batch_raises_on_client_error():
 @pytest.mark.asyncio
 async def test_delete_raises_memory_not_found_on_404():
     from qdrant_client.http.exceptions import UnexpectedResponse
-    from actrone_memory.exceptions import MemoryNotFoundError
 
     client = AsyncMock()
-    not_found = UnexpectedResponse(status_code=404, reason_phrase="Not Found", content=b"", headers={})
+    not_found = UnexpectedResponse(
+        status_code=404, reason_phrase="Not Found", content=b"", headers={}
+    )
     client.delete.side_effect = not_found
     store = _make_store(client)
 

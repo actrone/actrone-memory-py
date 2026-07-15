@@ -53,6 +53,7 @@ class L2Store(Protocol):
         threshold: float,
         limit: int = 20,
         content_types: list[ContentType] | None = None,
+        query_text: str | None = None,
     ) -> list[MemoryEntry]: ...
 
     async def delete(self, memory_id: str) -> None: ...
