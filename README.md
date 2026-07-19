@@ -119,6 +119,26 @@ No code changes — the same `MemoryManager.create()` reads these at startup.
 
 ---
 
+## Privacy & PII — local-first by default, cloud-capable
+
+This library is **local-first by default**: the built-in embedder runs in-process and fact extraction is
+opt-in, so with the defaults (`ACTRONE_EMBEDDING_PROVIDER=hashing`/`local`, extraction off) **nothing leaves
+your machine** — no API key, no egress. It is also **cloud-capable** — e.g.
+`ACTRONE_EMBEDDING_PROVIDER=openai`, or any OpenAI-compatible extractor.
+
+**Important — where PII protection holds:** the sensitivity classification (`none/low/pii/sensitive`) is
+produced *by* the extraction step, and that step (and any real embedder) sees the **raw** text. So PII
+protection here holds **only for local models** (in-process / a local Ollama endpoint — zero-egress). If you
+set a **cloud** provider, the raw text — including PII-classified content — is sent there; this library does
+**not** tokenise it first.
+
+Actrone's **hosted** platform adds **MAL (Memory Abstraction Layer)**, which tokenises PII *before* any
+inference — a structural guarantee that makes **cloud** models safe (same API, one-import migration). Short
+form: **local-first by default; cloud-capable; PII stays protected only on local models; MAL (hosted) makes
+cloud safe.**
+
+---
+
 ## How the Memory System Works
 
 Think of it like a human brain — there's a **working memory** for what just happened, and a **long-term memory** for everything else.
