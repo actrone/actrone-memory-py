@@ -10,6 +10,14 @@
 
 ---
 
+![A fact landing in the memory inspector, tagged by sensitivity](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-loop.gif)
+
+*[Watch the 60-second walkthrough, narrated](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-16x9.mp4)*
+*([1:1](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-1x1.mp4) and
+[9:16](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-9x16.mp4) cuts.)*
+
+---
+
 ## The Problem This Solves
 
 By default, AI agents are **goldfish** 🐟 — they forget everything the moment a conversation ends (and even *during* a long conversation when the context window fills up).
