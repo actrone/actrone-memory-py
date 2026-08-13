@@ -1,0 +1,36 @@
+name: "CodeQL"
+
+# GitHub's semantic SAST: deeper taint/dataflow analysis than ruff/bandit (ci.yml), which are
+# pattern-based linters. Complementary, not redundant: this catches bug classes (e.g. tainted
+# data flowing from an untrusted source into a sink) that pattern matching alone misses. Free for
+# public repositories.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, independent of any push: new CodeQL query packs land continuously, so a repo with
+    # no commits in a given week still gets scanned against the latest rules.
+    - cron: "30 3 * * 1"
+
+jobs:
+  analyze:
+    name: Analyze (python)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload results to the repo's Security tab
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          build-mode: none # Python is interpreted, no compile step for the extractor to hook
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
