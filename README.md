@@ -1,18 +1,18 @@
-# 🧠 actrone-memory
+# actrone-memory
 
-> **Persistent memory for AI agents — so they never forget who you are.**
+> **Persistent memory for AI agents, so they never forget who you are.**
 
 [![PyPI version](https://img.shields.io/pypi/v/actrone-memory?color=brightgreen&label=pypi)](https://pypi.org/project/actrone-memory/)
 [![Python](https://img.shields.io/pypi/pyversions/actrone-memory)](https://pypi.org/project/actrone-memory/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)](https://github.com/actrone/actrone-memory)
-[![CI](https://github.com/actrone/actrone-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/actrone/actrone-memory/actions)
+[![codecov](https://codecov.io/gh/actrone/actrone-memory-py/branch/main/graph/badge.svg)](https://codecov.io/gh/actrone/actrone-memory-py)
+[![CI](https://github.com/actrone/actrone-memory-py/actions/workflows/ci.yml/badge.svg)](https://github.com/actrone/actrone-memory-py/actions)
 
 ---
 
-![A fact landing in the memory inspector, tagged by sensitivity](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-loop.gif)
+![A fact landing and being classified by sensitivity](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-loop.gif)
 
-*[Watch the 60-second walkthrough, narrated](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-16x9.mp4)*
+*[Watch the one-minute walkthrough, narrated](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-16x9.mp4)*
 *([1:1](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-1x1.mp4) and
 [9:16](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-9x16.mp4) cuts.)*
 
@@ -20,12 +20,12 @@
 
 ## The Problem This Solves
 
-By default, AI agents are **goldfish** 🐟 — they forget everything the moment a conversation ends (and even *during* a long conversation when the context window fills up).
+By default, AI agents are goldfish. They forget everything the moment a conversation ends, and even *during* a long conversation once the context window fills up.
 
 This library gives your agent a **proper memory system**: a fast short-term memory for recent messages, and a long-term memory that stores and searches through everything the agent has ever learned.
 
 ```text
-Without actrone-memory          With actrone-memory
+Without actrone-memory            With actrone-memory
 ─────────────────────────         ──────────────────────────────
 User: "My name is Alex"           User: "My name is Alex"
 AI:   "Hello Alex!"               AI:   "Hello Alex!"
@@ -33,7 +33,7 @@ AI:   "Hello Alex!"               AI:   "Hello Alex!"
 [new session]                     [new session]
 
 User: "What's my name?"           User: "What's my name?"
-AI:   "I don't know your name."   AI:   "Your name is Alex!"  ✓
+AI:   "I don't know your name."   AI:   "Your name is Alex."
 ```
 
 ---
@@ -44,22 +44,30 @@ AI:   "I don't know your name."   AI:   "Your name is Alex!"  ✓
 pip install actrone-memory
 ```
 
+Recommended for real semantic recall that still runs entirely on your machine:
+
+```bash
+pip install "actrone-memory[onnx]"        # in-process ONNX embeddings, no key, no service
+```
+
 With framework adapters:
 
 ```bash
 pip install "actrone-memory[langchain]"   # for LangChain users
 pip install "actrone-memory[langgraph]"   # for LangGraph users
 pip install "actrone-memory[crewai]"      # for CrewAI users
-pip install "actrone-memory[local]"       # use local embeddings, no OpenAI needed
 pip install "actrone-memory[all]"         # everything
 ```
 
-**You'll need:** Python 3.11+. **That's it** — the default backend is fully local
+Sixteen framework adapters are available. See the
+[compatibility matrix](#compatibility-matrix) for the full list and tested version ranges.
+
+**You'll need:** Python 3.11+. **That's it.** The default backend is fully local
 and in-process, so there are **no services to run and no API key** to get started.
 Memory that never phones home.
 
 For durable, horizontally-scalable production, opt into the Redis + Qdrant backend
-(see [Going to production](#going-to-production)) — both start instantly with Docker:
+(see [Going to production](#going-to-production)). Both start instantly with Docker:
 
 ```bash
 docker run -d -p 6379:6379 redis:7.2-alpine
@@ -68,7 +76,7 @@ docker run -d -p 6333:6333 qdrant/qdrant:v1.9.2
 
 ---
 
-## Quickstart — zero services, zero keys
+## Quickstart: zero services, zero keys
 
 ```python
 import asyncio
@@ -100,13 +108,24 @@ async def main():
 asyncio.run(main())
 ```
 
-The dependency-free `HashingEmbedder` is deterministic keyword-overlap recall —
-great for local dev and tests. For semantic recall quality, set an embedding
-provider (below).
+**What you just got.** The default embedding provider is `local`, which picks the best
+offline embedder available and degrades gracefully with no configuration and no key:
+
+```text
+fastembed (in-process ONNX)   →   sentence-transformers   →   lexical hashing
+   [onnx] extra                      [local] extra              always available
+   real semantic recall              real semantic recall       keyword-overlap only
+```
+
+With the bare `pip install actrone-memory` you land on the last rung: deterministic
+keyword-overlap recall, which is ideal for tests and local dev but is not semantic. Add
+`pip install "actrone-memory[onnx]"` for real semantic recall that still never leaves your
+machine, or set `ACTRONE_EMBEDDING_PROVIDER=openai` if you would rather use a cloud model
+(see [Privacy and PII](#privacy-and-pii-local-first-by-default-cloud-capable) first).
 
 ### Going to production
 
-Two independent switches — flip them when you need durability and/or semantic
+Two independent switches. Flip them when you need durability and/or semantic
 recall. Both default off so you can start with zero setup.
 
 ```bash
@@ -123,25 +142,25 @@ export ACTRONE_OPENAI_API_KEY=sk-...
 #   export ACTRONE_EMBEDDING_PROVIDER=local     # sentence-transformers, no key
 ```
 
-No code changes — the same `MemoryManager.create()` reads these at startup.
+No code changes. The same `MemoryManager.create()` reads these at startup.
 
 ---
 
-## Privacy & PII — local-first by default, cloud-capable
+## Privacy and PII: local-first by default, cloud-capable
 
 This library is **local-first by default**: the built-in embedder runs in-process and fact extraction is
 opt-in, so with the defaults (`ACTRONE_EMBEDDING_PROVIDER=hashing`/`local`, extraction off) **nothing leaves
-your machine** — no API key, no egress. It is also **cloud-capable** — e.g.
+your machine**: no API key, no egress. It is also **cloud-capable**, e.g.
 `ACTRONE_EMBEDDING_PROVIDER=openai`, or any OpenAI-compatible extractor.
 
-**Important — where PII protection holds:** the sensitivity classification (`none/low/pii/sensitive`) is
+**Important, and this is exactly where PII protection holds.** The sensitivity classification (`none/low/pii/sensitive`) is
 produced *by* the extraction step, and that step (and any real embedder) sees the **raw** text. So PII
-protection here holds **only for local models** (in-process / a local Ollama endpoint — zero-egress). If you
-set a **cloud** provider, the raw text — including PII-classified content — is sent there; this library does
+protection here holds **only for local models** (in-process / a local Ollama endpoint, so zero-egress). If you
+set a **cloud** provider, the raw text, including PII-classified content, is sent there. This library does
 **not** tokenise it first.
 
 Actrone's **hosted** platform adds **MAL (Memory Abstraction Layer)**, which tokenises PII *before* any
-inference — a structural guarantee that makes **cloud** models safe (same API, one-import migration). Short
+inference, a structural guarantee that makes **cloud** models safe (same API, one-import migration). Short
 form: **local-first by default; cloud-capable; PII stays protected only on local models; MAL (hosted) makes
 cloud safe.**
 
@@ -149,7 +168,7 @@ cloud safe.**
 
 ## How the Memory System Works
 
-Think of it like a human brain — there's a **working memory** for what just happened, and a **long-term memory** for everything else.
+Think of it like a human brain. There is a **working memory** for what just happened, and a **long-term memory** for everything else.
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
@@ -161,20 +180,20 @@ Think of it like a human brain — there's a **working memory** for what just ha
 │  │  The last 50 messages    │   │  Compressed summaries     │  │
 │  │  of this conversation.   │   │  of older conversations.  │  │
 │  │                          │   │                           │  │
-│  │  Fast — under 1ms        │   │  Searched by meaning,     │  │
+│  │  Fast, under 1ms         │   │  Searched by meaning,     │  │
 │  │  Expires after 24h       │   │  not by keyword.          │  │
 │  │                          │   │  ~10ms. Never expires.    │  │
 │  └──────────────────────────┘   └───────────────────────────┘  │
 │                                                                 │
 │  When you call retrieve_context(), both are searched in         │
 │  parallel, then the most relevant pieces are selected to fit    │
-│  inside your token budget — automatically.                      │
+│  inside your token budget, automatically.                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### What happens when context gets too big?
 
-The library **prioritises intelligently** — it never silently drops important things. It always keeps the most recent messages and the most relevant memories, pruning the least important stuff first.
+The library **prioritises intelligently**. It never silently drops important things. It always keeps the most recent messages and the most relevant memories, pruning the least important stuff first.
 
 ```text
 Your token budget: 4,096 tokens
@@ -186,7 +205,7 @@ Your token budget: 4,096 tokens
 
 ### Auto-summarisation
 
-After every 20 messages (configurable), the library quietly compresses the conversation into a summary and saves it to long-term memory. This runs in the background — your users never wait for it.
+After every 20 messages (configurable), the library quietly compresses the conversation into a summary and saves it to long-term memory. This runs in the background, so your users never wait for it.
 
 ```text
 Message 1  ──┐
@@ -205,7 +224,7 @@ Message 20 ──┘                           ↑
 Each adapter is an optional extra (`pip install actrone-memory[<framework>]`), tested against the
 version range below. Tier 1 = a governed system-context string (framework-free); Tier 2 = the
 framework's native memory interface. The base install (`pip install actrone-memory`) is local-first
-and pulls **none** of these — nor Redis/Qdrant/OpenAI (those are the `redis`/`qdrant`/`openai`/
+and pulls **none** of these, nor Redis/Qdrant/OpenAI (those are the `redis`/`qdrant`/`openai`/
 `production` extras).
 
 | Framework | Extra | Tested version | Tiers |
@@ -227,7 +246,7 @@ and pulls **none** of these — nor Redis/Qdrant/OpenAI (those are the `redis`/`
 | Google ADK | `google_adk` | `>=1.0,<2` | 1 + 2 (`BaseMemoryService`) |
 | Microsoft Agent Framework | `microsoft_agent_framework` | `>=1.0,<2` | 1 + 2 (`ContextProvider`) |
 
-### LangChain — swap in 1 line
+### LangChain: swap in 1 line
 
 ```python
 # Before (built-in, forgets everything):
@@ -242,7 +261,7 @@ memory = ActroneMemory(agent_id="my-agent", session_id="user-123")
 chain = ConversationChain(llm=llm, memory=memory)
 ```
 
-### LangGraph — plug-in checkpointer
+### LangGraph: plug-in checkpointer
 
 ```python
 from actrone_memory.integrations.langgraph import ActroneCheckpointer
@@ -252,7 +271,7 @@ graph = graph_builder.compile(checkpointer=checkpointer)
 # Your graph now remembers state across restarts and sessions
 ```
 
-### CrewAI — shared crew memory
+### CrewAI: shared crew memory
 
 ```python
 from actrone_memory.integrations.crewai import ActroneCrewMemory
@@ -269,37 +288,40 @@ Full working scripts in the [`examples/`](examples/) folder.
 
 ## Configuration
 
-Everything is controlled with environment variables — no config files needed.
+Everything is controlled with environment variables, so there are no config files to
+write. **Every value below has a working default.** You can run the quickstart without
+setting a single one.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `ACTRONE_REDIS_URL` | `redis://localhost:6379` | Where your Redis is running |
-| `ACTRONE_QDRANT_URL` | `http://localhost:6333` | Where your Qdrant is running |
-| `ACTRONE_OPENAI_API_KEY` | *(required)* | Your OpenAI key for generating memory embeddings |
-| `ACTRONE_EMBEDDING_PROVIDER` | `openai` | Set to `local` to run without OpenAI |
-| `ACTRONE_SESSION_TTL_HOURS` | `24` | How long short-term memory lasts |
-| `ACTRONE_MAX_SESSION_TURNS` | `50` | Max messages kept in short-term memory |
-| `ACTRONE_RELEVANCE_THRESHOLD` | `0.72` | How similar a memory must be before it's included (0–1) |
-| `ACTRONE_AUTO_SUMMARISE` | `true` | Automatically compress old conversations to long-term memory |
-| `ACTRONE_SUMMARISE_AFTER_TURNS` | `20` | How many messages before auto-summarisation kicks in |
+| `ACTRONE_BACKEND` | `memory` | `memory` runs fully in-process. Set `redis_qdrant` for the durable backend. |
+| `ACTRONE_EMBEDDING_PROVIDER` | `local` | `local` (sentence-transformers, offline), `hashing` (dependency-free), or `openai`. |
+| `ACTRONE_OPENAI_API_KEY` | *(none)* | Required **only** when `ACTRONE_EMBEDDING_PROVIDER=openai`. Unused otherwise. |
+| `ACTRONE_REDIS_URL` | `redis://localhost:6379` | Where your Redis is running. Used only when `ACTRONE_BACKEND=redis_qdrant`. |
+| `ACTRONE_QDRANT_URL` | `http://localhost:6333` | Where your Qdrant is running. Used only when `ACTRONE_BACKEND=redis_qdrant`. |
+| `ACTRONE_SESSION_TTL_HOURS` | `24` | How long short-term memory lasts. |
+| `ACTRONE_MAX_SESSION_TURNS` | `50` | Max messages kept in short-term memory. |
+| `ACTRONE_RELEVANCE_THRESHOLD` | `0.72` | How similar a memory must be before it is included (0 to 1). |
+| `ACTRONE_AUTO_SUMMARISE` | `true` | Automatically compress old conversations into long-term memory. |
+| `ACTRONE_SUMMARISE_AFTER_TURNS` | `20` | How many messages before auto-summarisation runs. |
 
 ---
 
 ## Documentation
 
-| | |
+| Page | What's in it |
 | --- | --- |
-| 📐 [Architecture Deep Dive](docs/architecture-deep-dive.md) | How the two-tier system works under the hood |
-| 📖 [API Reference](docs/api-reference.md) | Every method, every parameter, every error |
-| 🍳 [Examples / Cookbook](examples/) | Copy-paste scripts for OpenAI, LangChain, and CrewAI |
-| 🤝 [Contributing](CONTRIBUTING.md) | How to set up the dev environment and submit a PR |
-| 🔒 [Security Policy](SECURITY.md) | How to report a vulnerability privately |
+| [Architecture deep dive](docs/architecture-deep-dive.md) | How the two-tier system works under the hood |
+| [API reference](docs/api-reference.md) | Every method, every parameter, every error |
+| [Examples and cookbook](examples/) | Copy-paste scripts for OpenAI, LangChain, and CrewAI |
+| [Contributing](CONTRIBUTING.md) | How to set up the dev environment and submit a PR |
+| [Security policy](SECURITY.md) | How to report a vulnerability privately |
 
 ---
 
 ## Part of Actrone
 
-`actrone-memory` is the open-source memory layer powering [Actrone](https://actrone.com) — a full infrastructure platform for production AI agents.
+`actrone-memory` is the open-source memory layer powering [Actrone](https://actrone.com), a full infrastructure platform for production AI agents.
 
 When you're ready for **durable task execution**, **multi-model routing**, **tool supervision**, and **AI governance** on top of your memory layer, the hosted platform is one API key away.
 
@@ -307,4 +329,4 @@ When you're ready for **durable task execution**, **multi-model routing**, **too
 
 ## License
 
-[MIT](LICENSE) — free to use in any project, commercial or otherwise.
+[MIT](LICENSE). Free to use in any project, commercial or otherwise.
