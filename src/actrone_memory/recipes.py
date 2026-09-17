@@ -210,7 +210,7 @@ def render_recipe(recipe: Recipe) -> str:
         f"# {recipe.label} — memory in a few lines\n\n"
         f"1) Install\n   {recipe.install}\n\n"
         f"2) Paste into your agent (or a new file)\n\n{recipe.snippet}\n\n"
-        "Docs: https://docs.actrone.com/memory"
+        "Docs: https://actrone.com/docs/memory/overview"
     )
 
 

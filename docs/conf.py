@@ -40,3 +40,7 @@ suppress_warnings = ["ref.python"]
 
 html_theme = "furo"
 html_title = "Actrone Memory (Python)"
+# The reference is served from actrone.com/reference/memory-py/ (vendored by the marketing site's
+# build-sdk-reference script). Setting the base URL makes Sphinx emit a canonical link on every page,
+# so search engines index the reference under its public URL rather than guessing.
+html_baseurl = "https://actrone.com/reference/memory-py/"

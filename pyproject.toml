@@ -1,7 +1,7 @@
 [project]
 name = "actrone-memory"
 version = "0.2.0"
-description = "Production-grade two-tier persistent memory for AI agents — local-first by default, Redis + Qdrant for scale"
+description = "Production-grade two-tier persistent memory for AI agents: local-first by default, Redis + Qdrant for scale"
 readme = "README.md"
 license = "MIT"                    # PEP 639 SPDX expression
 license-files = ["LICENSE"]
@@ -115,7 +115,7 @@ docs = [
 [project.urls]
 Homepage = "https://actrone.com"
 Repository = "https://github.com/actrone/actrone-memory-py"
-Documentation = "https://docs.actrone.com/memory"
+Documentation = "https://actrone.com/docs/memory/overview"
 Issues = "https://github.com/actrone/actrone-memory-py/issues"
 Changelog = "https://github.com/actrone/actrone-memory-py/blob/main/CHANGELOG.md"
 
