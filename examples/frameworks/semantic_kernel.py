@@ -1,4 +1,4 @@
-"""Semantic Kernel — mypy-checked example source for the docs."""
+"""Semantic Kernel, mypy-checked example source for the docs."""
 # region semantic_kernel
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.semantic_kernel import ActroneSemanticKernelMemory

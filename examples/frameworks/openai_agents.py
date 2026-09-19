@@ -1,4 +1,4 @@
-"""OpenAI Agents SDK — mypy-checked example source for the docs."""
+"""OpenAI Agents SDK, mypy-checked example source for the docs."""
 # region openai_agents
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.openai_agents import ActroneOpenAIAgentsMemory

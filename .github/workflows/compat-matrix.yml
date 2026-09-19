@@ -1,11 +1,11 @@
 name: Framework Compatibility
 
 # Per-repo compat verification (vendored tooling at ci/compat-matrix/). Two layers:
-#   1. drift-gate — fast, on every PR: fails if pyproject extras / README drift from compatibility.yaml.
-#   2. version-matrix — scheduled: installs each declared framework at its range boundaries (floor /
+#   1. drift-gate, fast, on every PR: fails if pyproject extras / README drift from compatibility.yaml.
+#   2. version-matrix, scheduled: installs each declared framework at its range boundaries (floor /
 #      current / next) in ISOLATED jobs and runs the interface canary against the REAL SDK, so an
 #      incompatibility inside our declared range is caught here, not by a user. `next` (pre/next-major)
-#      jobs are allow_fail — early warning, not a gate.
+#      jobs are allow_fail, early warning, not a gate.
 #
 # Vendored from the workspace ci/compat-matrix/ into this repo (per-repo split); actrone-py mirrors this.
 
@@ -18,7 +18,7 @@ on:
       - "ci/compat-matrix/**"
       - ".github/workflows/compat-matrix.yml"
   schedule:
-    - cron: "0 6 * * 1" # Mondays 06:00 UTC — catch new framework releases within a week
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC, catch new framework releases within a week
   workflow_dispatch: {}
 
 permissions:
@@ -33,12 +33,12 @@ jobs:
     name: drift-gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - run: pip install pyyaml
-      - name: check-compat — pyproject + README agree with compatibility.yaml
+      - name: check-compat, pyproject + README agree with compatibility.yaml
         run: python scripts/check_compat.py
 
   # ── Layer 2a: expand this repo's manifest into a job list (scheduled) ────────
@@ -49,8 +49,8 @@ jobs:
     outputs:
       jobs: ${{ steps.emit.outputs.jobs }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - run: pip install pyyaml
@@ -69,14 +69,80 @@ jobs:
       matrix:
         job: ${{ fromJson(needs.emit-matrix.outputs.jobs) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-      - name: canary — ${{ matrix.job.framework }} @ ${{ matrix.job.spec }}
+      - name: canary, ${{ matrix.job.framework }} @ ${{ matrix.job.spec }}
         run: >-
           bash ci/compat-matrix/run.sh
           "${{ matrix.job.canary }}"
           "${{ matrix.job.spec }}"
           "${{ matrix.job.framework }}"
           "${{ matrix.job.which }}"
+
+  # ── Layer 3: advisory dependency audit per framework extra (scheduled) ───────
+  # ci.yml gates on the base + production-extra resolutions, which are the dependency
+  # trees this library actually ships. The framework extras are user-chosen, resolve
+  # slowly, and are frequently held back by an upstream cap we do not control, so
+  # gating on them would mean a red build nobody can fix. Reporting them weekly is the
+  # useful half: it is how we notice when an upstream fix finally becomes reachable.
+  # Never fails the run, writes findings to the job summary.
+  extras-audit:
+    name: extras dependency audit (advisory)
+    needs: emit-matrix
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml uv pip-audit
+
+      - name: Audit each framework extra in isolation
+        run: |
+          # Extras come from compatibility.yaml so this cannot drift from the manifest.
+          python - <<'PY' > /tmp/extras.txt
+          import yaml
+          manifest = yaml.safe_load(open("compatibility.yaml"))
+          extras = sorted({fw["extra"] for fw in manifest["frameworks"].values()})
+          print("\n".join(extras))
+          PY
+
+          {
+            echo "# Framework extra dependency audit"
+            echo
+            echo "Advisory only. A finding here is usually an upstream cap, not something"
+            echo "this repo can fix by bumping a range. Compare against the gated audit in ci.yml."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while read -r extra; do
+            [ -n "$extra" ] || continue
+            echo "::group::$extra"
+            if ! uv pip compile --extra "$extra" pyproject.toml -o "/tmp/req-$extra.txt" >/dev/null 2>&1; then
+              echo "- \`$extra\`: could not resolve (skipped)" >> "$GITHUB_STEP_SUMMARY"
+              echo "resolution failed, skipping"
+              echo "::endgroup::"
+              continue
+            fi
+            if pip-audit --requirement "/tmp/req-$extra.txt" > "/tmp/audit-$extra.txt" 2>&1; then
+              echo "- \`$extra\`: clean" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- \`$extra\`: findings below" >> "$GITHUB_STEP_SUMMARY"
+              {
+                echo
+                echo "<details><summary>$extra</summary>"
+                echo
+                echo '```'
+                cat "/tmp/audit-$extra.txt"
+                echo '```'
+                echo
+                echo "</details>"
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+            cat "/tmp/audit-$extra.txt"
+            echo "::endgroup::"
+          done < /tmp/extras.txt

@@ -1,6 +1,6 @@
 """Contract test for the AWS Strands memory adapter (Tier 1).
 
-Framework-free — runs against a real local MemoryManager (no services, no API key).
+Framework-free, runs against a real local MemoryManager (no services, no API key).
 """
 
 from __future__ import annotations

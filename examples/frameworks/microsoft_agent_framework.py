@@ -1,4 +1,4 @@
-"""Microsoft Agent Framework — mypy-checked example source for the docs."""
+"""Microsoft Agent Framework, mypy-checked example source for the docs."""
 # region microsoft_agent_framework
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.microsoft_agent_framework import ActroneAgentFrameworkMemory

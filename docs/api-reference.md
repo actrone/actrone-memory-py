@@ -7,33 +7,35 @@
 
 ## Quick Navigation
 
-- [MemoryManager](#memorymanager) — the main object you'll use
-  - [create()](#create) — connect to Redis and Qdrant
-  - [store_turn()](#store_turn) — save a conversation message
-  - [retrieve_context()](#retrieve_context) — fetch relevant memory for the next reply
-  - [inject_memory()](#inject_memory) — manually add a fact to long-term memory
-  - [delete_memory()](#delete_memory) — remove a specific memory
-  - [clear_session()](#clear_session) — wipe a session's short-term memory
-  - [search_memories()](#search_memories) — search long-term memory directly
-  - [get_session_metadata()](#get_session_metadata) — check session stats
-- [Data Types](#data-types) — the objects these methods return
-- [MemoryConfig](#memoryconfig) — all configuration options
-- [Errors](#errors) — what can go wrong and how to handle it
-- [Framework Integrations](#framework-integrations) — LangChain, LangGraph, CrewAI
+- [MemoryManager](#memorymanager), the main object you'll use
+  - [create()](#create), connect to Redis and Qdrant
+  - [store_turn()](#store_turn), save a conversation message
+  - [retrieve_context()](#retrieve_context), fetch relevant memory for the next reply
+  - [inject_memory()](#inject_memory), manually add a fact to long-term memory
+  - [delete_memory()](#delete_memory), remove a specific memory
+  - [clear_session()](#clear_session), wipe a session's short-term memory
+  - [search_memories()](#search_memories), search long-term memory directly
+  - [get_session_metadata()](#get_session_metadata), check session stats
+- [Data Types](#data-types), the objects these methods return
+- [MemoryConfig](#memoryconfig), all configuration options
+- [Errors](#errors), what can go wrong and how to handle it
+- [Framework Integrations](#framework-integrations), LangChain, LangGraph, CrewAI
 
 ---
 
 ## MemoryManager
 
-This is the main class you'll interact with. It manages both the short-term Redis memory and the long-term Qdrant memory, and handles all the logic of keeping them in sync.
+This is the main class you'll interact with. It manages both the short-term (hot session) tier and the long-term (semantic) tier, and handles all the logic of keeping them in sync.
 
-**Never create one directly with `MemoryManager(...)`.** Always use `MemoryManager.create()` or the `create_memory_manager()` context manager shown below — they handle connecting to Redis and Qdrant for you.
+By default both tiers are served by an in-process store, so nothing external is required. Set `backend="redis_qdrant"` to put the hot tier in Redis and the long-term tier in Qdrant.
+
+**Never create one directly with `MemoryManager(...)`.** Always use `MemoryManager.create()` or the `create_memory_manager()` context manager shown below, they wire up the stores and the embedding provider for you.
 
 ---
 
 ### `create()`
 
-**What it does:** Connects to Redis and Qdrant, sets up the embedding provider, and returns a ready-to-use `MemoryManager`. Think of it as "opening" the memory system.
+**What it does:** Builds the stores for the configured backend (in-process by default, or Redis + Qdrant when `backend="redis_qdrant"`), sets up the embedding provider, and returns a ready-to-use `MemoryManager`. Think of it as "opening" the memory system.
 
 ```python
 @classmethod
@@ -50,19 +52,19 @@ async def create(cls, config: MemoryConfig | None = None) -> MemoryManager
 
 **Can fail with:**
 
-- `ConfigurationError` — if required settings are missing (e.g. you forgot to set `ACTRONE_OPENAI_API_KEY`)
-- `StoreConnectionError` — if Redis or Qdrant isn't running or can't be reached
+- `ConfigurationError`, if required settings are missing (e.g. you forgot to set `ACTRONE_OPENAI_API_KEY`)
+- `StoreConnectionError`, if Redis or Qdrant isn't running or can't be reached
 
 **The two recommended ways to use it:**
 
 ```python
-# Option A — context manager (recommended)
+# Option A, context manager (recommended)
 # The connection closes automatically when the block ends, even if an error occurs.
-async with MemoryManager.create() as memory:
+async with create_memory_manager() as memory:
     await memory.store_turn(...)
     context = await memory.retrieve_context(...)
 
-# Option B — manual open/close
+# Option B, manual open/close
 memory = await MemoryManager.create()
 try:
     await memory.store_turn(...)
@@ -96,9 +98,9 @@ async def store_turn(
 | `assistant_message` | `str` | What the agent replied. |
 | `tool_results` | list or `None` | Optional. If the agent called any external tools (like a web search), you can store the results here for future reference. |
 
-**Returns:** `str` — the ID of the saved turn (useful if you need to reference it later).
+**Returns:** `str`, the ID of the saved turn (useful if you need to reference it later).
 
-**Can fail with:** `StoreConnectionError` — if Redis is unreachable.
+**Can fail with:** `StoreConnectionError`, if Redis is unreachable.
 
 ```python
 turn_id = await memory.store_turn(
@@ -113,7 +115,7 @@ turn_id = await memory.store_turn(
 
 ### `retrieve_context()`
 
-**What it does:** Before your agent replies, call this to get all the relevant memory — recent messages from this session plus any related memories from past sessions — pre-packaged and ready to inject into your LLM prompt.
+**What it does:** Before your agent replies, call this to get all the relevant memory, recent messages from this session plus any related memories from past sessions, pre-packaged and ready to inject into your LLM prompt.
 
 It runs a 4-phase pipeline (fetch both tiers in parallel → allocate the token budget → rank by relevance → prune to fit) and returns only what fits in your budget.
 
@@ -135,13 +137,13 @@ async def retrieve_context(
 | `query` | `str` | The user's current message. This is used to search long-term memory for relevant past conversations. |
 | `token_budget` | `int` | How many tokens you can spare for memory context. Must be greater than 0. A safe default is `4096`. |
 
-**Returns:** `RetrievedContext` — see [Data Types](#data-types) below.
+**Returns:** `RetrievedContext`, see [Data Types](#data-types) below.
 
 **Can fail with:**
 
-- `TokenBudgetError` — if you pass `token_budget=0` or less
-- `StoreConnectionError` — if Redis or Qdrant is unreachable
-- `EmbeddingError` — if the embedding API call fails
+- `TokenBudgetError`, if you pass `token_budget=0` or less
+- `StoreConnectionError`, if Redis or Qdrant is unreachable
+- `EmbeddingError`, if the embedding API call fails
 
 ```python
 context = await memory.retrieve_context(
@@ -166,7 +168,7 @@ print(f"Used {context.total_tokens_used} of {context.token_budget} tokens")
 
 ### `inject_memory()`
 
-**What it does:** Manually writes a piece of information directly into long-term memory (Qdrant). Use this to seed an agent with background knowledge before a conversation starts — things like user preferences, company policies, or facts you've collected elsewhere.
+**What it does:** Manually writes a piece of information directly into long-term memory (Qdrant). Use this to seed an agent with background knowledge before a conversation starts, things like user preferences, company policies, or facts you've collected elsewhere.
 
 ```python
 async def inject_memory(
@@ -182,13 +184,13 @@ async def inject_memory(
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `agent_id` | `str` | — | The agent that should have access to this memory. |
-| `content` | `str` | — | The text to remember. Write it as a clear, self-contained sentence. |
+| `agent_id` | `str` | - | The agent that should have access to this memory. |
+| `content` | `str` | - | The text to remember. Write it as a clear, self-contained sentence. |
 | `importance` | `float` | `0.8` | A score from 0.0 to 1.0. Higher importance means this memory surfaces more readily. Most injected facts should be 0.8 or higher. |
-| `session_id` | `str` | `"injected"` | A label for where this memory came from. Can be anything — useful for filtering or debugging. |
+| `session_id` | `str` | `"injected"` | A label for where this memory came from. Can be anything, useful for filtering or debugging. |
 | `topic_tags` | list or `None` | `None` | Optional keywords that describe this memory, e.g. `["user-profile", "preferences"]`. |
 
-**Returns:** `str` — the memory ID (save this if you want to delete the memory later).
+**Returns:** `str`, the memory ID (save this if you want to delete the memory later).
 
 **Can fail with:** `StoreConnectionError`, `EmbeddingError`
 
@@ -261,11 +263,11 @@ async def search_memories(
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `agent_id` | `str` | — | Which agent's memories to search. |
-| `query` | `str` | — | What you're looking for, in plain English. |
+| `agent_id` | `str` | - | Which agent's memories to search. |
+| `query` | `str` | - | What you're looking for, in plain English. |
 | `limit` | `int` | `10` | Maximum number of results to return. |
 
-**Returns:** `list[MemoryEntry]` — sorted by relevance, filtered at the configured threshold.
+**Returns:** `list[MemoryEntry]`, sorted by relevance, filtered at the configured threshold.
 
 ```python
 results = await memory.search_memories(
@@ -282,7 +284,7 @@ for result in results:
 
 ### `get_session_metadata()`
 
-**What it does:** Returns basic stats about a session — when it was created, when it was last active, and how many turns it has. Returns `None` if the session doesn't exist or has expired.
+**What it does:** Returns basic stats about a session, when it was created, when it was last active, and how many turns it has. Returns `None` if the session doesn't exist or has expired.
 
 ```python
 async def get_session_metadata(agent_id: str, session_id: str) -> SessionMetadata | None
@@ -368,12 +370,12 @@ A single item stored in long-term memory (Qdrant). Could be a compressed summary
 
 ```python
 class MemoryEntry:
-    id: str                # Unique ID — use this with delete_memory()
+    id: str                # Unique ID, use this with delete_memory()
     agent_id: str
     session_id: str
     content: str           # The actual text of the memory
     content_type: str      # One of: "turn", "summary", "tool_result", "injected"
-    importance_score: float   # 0.0–1.0 — how important this memory is
+    importance_score: float   # 0.0-1.0, how important this memory is
     topic_tags: list[str]  # Keywords describing this memory
     token_count: int
     timestamp: datetime    # When this memory was created (UTC)
@@ -442,7 +444,7 @@ async with MemoryManager.create(config) as memory:
 | `openai_api_key` | `ACTRONE_OPENAI_API_KEY` | `None` | Required when `embedding_provider = "openai"` |
 | `session_ttl_hours` | `ACTRONE_SESSION_TTL_HOURS` | `24` | How many hours before short-term memory expires |
 | `max_session_turns` | `ACTRONE_MAX_SESSION_TURNS` | `50` | Maximum messages stored in short-term memory per session |
-| `relevance_threshold` | `ACTRONE_RELEVANCE_THRESHOLD` | `0.72` | How similar a memory must be to the query before it's included (0.0–1.0). Raise this to be more selective. |
+| `relevance_threshold` | `ACTRONE_RELEVANCE_THRESHOLD` | `0.72` | How similar a memory must be to the query before it's included (0.0-1.0). Raise this to be more selective. |
 | `auto_summarise` | `ACTRONE_AUTO_SUMMARISE` | `true` | Automatically compress old conversations into long-term memory |
 | `summarise_after_turns` | `ACTRONE_SUMMARISE_AFTER_TURNS` | `20` | Trigger summarisation after this many turns |
 
@@ -481,16 +483,16 @@ except ActroneMemoryError as e:
 try:
     context = await memory.retrieve_context(...)
 except StoreConnectionError as e:
-    print(f"Could not reach {e.store} — falling back to empty context")
+    print(f"Could not reach {e.store}, falling back to empty context")
     context = empty_context
 except EmbeddingError:
-    print("Embedding failed — retrying without semantic search")
+    print("Embedding failed, retrying without semantic search")
 ```
 
 **Every error includes:**
 
-- `e.code` — a machine-readable identifier (e.g. `"ERR_STORE_CONNECTION"`) — useful for logging
-- `e.message` — a human-readable description of what went wrong
+- `e.code`, a machine-readable identifier (e.g. `"ERR_STORE_CONNECTION"`), useful for logging
+- `e.message`, a human-readable description of what went wrong
 
 | Error | Code | When it's raised |
 | --- | --- | --- |
@@ -506,20 +508,40 @@ except EmbeddingError:
 
 ### LangChain
 
-Drop-in replacement for `ConversationBufferMemory`. The rest of your LangChain code stays exactly the same.
+Two adapters, because LangChain 1.x removed the `BaseMemory` abstraction. Use
+`ActroneChatMessageHistory` unless you are pinned to 0.x: it targets `BaseChatMessageHistory`,
+which is unchanged across both majors. Both are async-only, so drive LangChain with `ainvoke`
+or `astream`.
 
 ```python
-from actrone_memory.integrations.langchain import ActroneMemory
+from actrone_memory.integrations.langchain import ActroneChatMessageHistory
 
-memory = ActroneMemory(
+history = ActroneChatMessageHistory(
     agent_id     = "my-agent",
     session_id   = "user-session-1",
     token_budget = 4096,            # optional, default 4096
 )
 
-# Use it anywhere LangChain expects a memory object:
+# Use it anywhere LangChain expects a chat message history:
+chain = RunnableWithMessageHistory(runnable, lambda _: history)
+response = await chain.ainvoke(
+    {"input": "Hello!"},
+    config={"configurable": {"session_id": "user-session-1"}},
+)
+
+# Or read and write it directly:
+await history.aadd_messages([HumanMessage(content="hi"), AIMessage(content="hello")])
+messages = await history.aget_messages()
+```
+
+On **LangChain 0.x only**, `ActroneMemory` is the `ConversationBufferMemory` drop-in and the
+rest of your chain stays the same. It raises on 1.x with a pointer to the adapter above.
+
+```python
+from actrone_memory.integrations.langchain import ActroneMemory
+
+memory = ActroneMemory(agent_id="my-agent", session_id="user-session-1")
 chain = ConversationChain(llm=llm, memory=memory)
-response = await chain.ainvoke({"input": "Hello!"})
 ```
 
 ### LangGraph

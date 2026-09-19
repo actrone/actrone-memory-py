@@ -1,4 +1,4 @@
-"""Claude Agent SDK — mypy-checked example source for the docs."""
+"""Claude Agent SDK, mypy-checked example source for the docs."""
 # region claude_agent_sdk
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.claude_agent_sdk import ActroneClaudeAgentMemory

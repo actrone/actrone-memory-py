@@ -1,4 +1,4 @@
-"""Unit tests for the opt-in cross-encoder reranker (Axis A4).
+"""Unit tests for the opt-in cross-encoder reranker .
 
 ``fastembed`` is stubbed so these run in the base venv. They cover the reorder-by-score contract,
 the top-K window (tail preserved), the graceful ``build_reranker`` degradation, and that the manager

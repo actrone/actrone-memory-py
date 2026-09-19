@@ -3,9 +3,9 @@
 Google's Agent Development Kit governs long-term memory through ``BaseMemoryService``
 (``add_session_to_memory`` + ``search_memory``). This adapter offers:
 
-- **Tier 1** — :meth:`ActroneGoogleADKMemory.build_context`: the governed memory as a string
+- **Tier 1**, :meth:`ActroneGoogleADKMemory.build_context`: the governed memory as a string
   to prepend to an agent's instruction for a turn (inherited from the shared base).
-- **Tier 2** — :meth:`ActroneGoogleADKMemory.as_memory_service`: a real ADK
+- **Tier 2**, :meth:`ActroneGoogleADKMemory.as_memory_service`: a real ADK
   ``BaseMemoryService`` backed by the Actrone store, so it drops straight into a
   ``Runner(memory_service=…)``. ``google-adk`` is imported lazily inside that method only, so
   the module imports (and the Tier-1 path runs) without ADK installed.
@@ -23,7 +23,7 @@ from actrone_memory.integrations._context import BaseActroneMemory
 class ActroneGoogleADKMemory(BaseActroneMemory):
     """Governed memory for a Google ADK agent.
 
-    Usage (Tier 2 — native ``BaseMemoryService``)::
+    Usage (Tier 2, native ``BaseMemoryService``)::
 
         from google.adk.runners import Runner
         from actrone_memory.integrations.google_adk import ActroneGoogleADKMemory

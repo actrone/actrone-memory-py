@@ -1,4 +1,4 @@
-"""``actrone-memory`` CLI — the non-destructive, existing-project onboarding path.
+"""``actrone-memory`` CLI, the non-destructive, existing-project onboarding path.
 
 It only **prints** a framework recipe or **creates one new file**; it never reads or edits your
 existing code. The Python counterpart of ``npx @actrone/memory add`` (literal DX symmetry)::
@@ -22,7 +22,7 @@ from actrone_memory.recipes import (
 )
 
 USAGE = (
-    "actrone-memory — add memory to your agent (non-destructive)\n\n"
+    "actrone-memory, add memory to your agent (non-destructive)\n\n"
     "Usage:\n"
     "  actrone-memory add <framework> [--write <file>]   print a recipe, or write ONE new file\n"
     "  actrone-memory list                               list supported frameworks\n\n"
@@ -80,7 +80,7 @@ def run_cli(args: list[str], io: CliIO) -> int:
         io.log(
             f"Wrote {target} (a new self-contained file).\n"
             f"Install: {recipe.install}\n"
-            "Import what you need from it into your agent — nothing in your project was modified."
+            "Import what you need from it into your agent, nothing in your project was modified."
         )
         return 0
 

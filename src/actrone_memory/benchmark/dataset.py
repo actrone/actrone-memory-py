@@ -9,10 +9,10 @@ from actrone_memory.models import Sensitivity
 
 Each case seeds a set of durable memories for one agent, then poses queries whose
 *relevant* memory ids are known ground truth. The harness (``harness.py``) measures
-recall@k / precision@k / MRR over these — so memory quality is a measurable,
+recall@k / precision@k / MRR over these, so memory quality is a measurable,
 regression-gated property that ships **in the library**. Deliberately small,
 keyword-overlap-friendly, and dependency-free so it runs in CI with the default
-local backend (in-memory store + hashing embedder) — no services, no API key.
+local backend (in-memory store + hashing embedder), no services, no API key.
 """
 
 
@@ -109,7 +109,7 @@ def load_cases(path: str) -> list[EvalCase]:
 
     A tiny converter turns each upstream benchmark (whose evidence/answer ids become
     ``relevant_ids``)
-    into this shape, keeping the metric + the harness identical across datasets — the reproducible
+    into this shape, keeping the metric + the harness identical across datasets, the reproducible
     results table Gate E requires. Raises ``ValueError`` on a malformed file.
     """
     import json

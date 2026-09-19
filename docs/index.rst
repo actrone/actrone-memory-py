@@ -1,4 +1,4 @@
-Actrone Memory (Python) — API reference
+Actrone Memory (Python): API reference
 =======================================
 
 Auto-generated from the ``actrone_memory`` package source (docstrings + type hints).

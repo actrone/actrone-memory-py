@@ -1,69 +1,97 @@
 """Logging configuration helpers for actrone-memory.
 
-As a library, actrone-memory does NOT configure structlog globally — that is
+As a library, actrone-memory does NOT configure structlog globally, that is
 the responsibility of the application that imports this library.
 
 Call ``configure_json_logging()`` once at application startup to emit
 production-ready structured JSON logs. For local development, call
 ``configure_dev_logging()`` instead for human-readable coloured output.
 
-If you have your own structlog configuration, there is nothing to call here —
-actrone-memory's loggers will inherit it automatically.
+If you have your own structlog configuration, there is nothing to call here: actrone-memory's
+loggers will inherit it automatically.
 """
 
 from __future__ import annotations
 
 import logging
-from contextvars import ContextVar
+import sys
 from typing import cast
 
 import structlog
 
-# ── Standard field schema (CLAUDE.md §6.3) ────────────────────────────────────
+# ── Standard field schema ──────────────────────────────────────────────────
 # Reserved keys every log line should carry. Bind via `bind_logger` instead of
 # adding ad-hoc kwargs so log aggregators can filter on a stable shape.
 #
-#   timestamp / level   — added by structlog
-#   service             — always "actrone-memory"
-#   request_id          — embedder-supplied correlation ID
-#   trace_id            — OTel trace ID, when available
-#   event               — machine-readable event name (e.g. "memory.context.retrieved")
-#   agent_id / session_id — per-call identifiers
+#   timestamp / level, added by structlog
+#   service, always "actrone-memory"
+#   request_id, embedder-supplied correlation ID
+#   trace_id, OTel trace ID, when available
+#   event, machine-readable event name (e.g. "memory.context.retrieved")
+#   agent_id / session_id, per-call identifiers
 
 _SERVICE_NAME = "actrone-memory"
 
-_request_id_var: ContextVar[str | None] = ContextVar("actrone_memory_request_id", default=None)
-_trace_id_var: ContextVar[str | None] = ContextVar("actrone_memory_trace_id", default=None)
-
 
 def set_request_id(value: str | None) -> None:
-    """Set the correlation ID for log lines emitted in the current async task."""
-    _request_id_var.set(value)
+    """Set the correlation ID carried by log lines in the current context.
+
+    The ID is stored in structlog's own context-local store, so it is picked up
+    by the ``merge_contextvars`` processor when each event is rendered. That is
+    what makes it apply to loggers created before the ID was known (module-level
+    loggers, which is how this library creates them) instead of only to loggers
+    bound afterwards. Pass ``None`` to clear it, e.g. when a request ends.
+
+    Requires a structlog configuration that includes ``merge_contextvars``;
+    :func:`configure_json_logging` and :func:`configure_dev_logging` both do.
+    """
+    if value is None:
+        structlog.contextvars.unbind_contextvars("request_id")
+    else:
+        structlog.contextvars.bind_contextvars(request_id=value)
 
 
 def set_trace_id(value: str | None) -> None:
-    """Set the OTel trace ID for log lines emitted in the current async task."""
-    _trace_id_var.set(value)
+    """Set the OTel trace ID carried by log lines in the current context.
+
+    Same context-local mechanism as :func:`set_request_id`. Pass ``None`` to clear.
+    """
+    if value is None:
+        structlog.contextvars.unbind_contextvars("trace_id")
+    else:
+        structlog.contextvars.bind_contextvars(trace_id=value)
+
+
+def clear_log_context() -> None:
+    """Drop the request/trace IDs bound for the current context.
+
+    Call this when a unit of work finishes, so IDs cannot leak into the next one
+    on a reused worker task.
+    """
+    structlog.contextvars.unbind_contextvars("request_id", "trace_id")
 
 
 def bind_logger(name: str, **fields: object) -> structlog.stdlib.BoundLogger:
-    """Return a structlog logger pre-bound with the standard field schema.
+    """Return a structlog logger carrying the standard field schema.
 
-    Use this in new call sites instead of ``structlog.get_logger(name)``; the
-    standard fields will appear on every line emitted by the returned logger
-    without callers having to remember them.
+    Use this instead of ``structlog.get_logger(name)`` so every line carries
+    ``service``. ``request_id`` and ``trace_id`` are deliberately not attached
+    here: they are resolved per event from the context (see
+    :func:`set_request_id`), so a logger created at import time still picks up an
+    ID that is set later, per request.
+
+    The fields are passed as ``get_logger`` initial values rather than through
+    ``.bind()``, which matters for module-level loggers: ``.bind()`` materialises
+    the logger against whatever configuration exists at import time, freezing the
+    renderer, so an application calling :func:`configure_json_logging` afterwards
+    would keep getting console output. Initial values stay lazy and pick up the
+    configuration in force when the first line is actually emitted.
     """
-    logger = structlog.get_logger(name)
-    # structlog.get_logger / .bind() are typed as returning Any; cast back to the
-    # documented return type for callers under strict mypy.
+    # structlog.get_logger is typed as returning Any; cast back to the documented
+    # return type for callers under strict mypy.
     return cast(
         "structlog.stdlib.BoundLogger",
-        logger.bind(
-            service=_SERVICE_NAME,
-            request_id=_request_id_var.get(),
-            trace_id=_trace_id_var.get(),
-            **fields,
-        ),
+        structlog.get_logger(name, service=_SERVICE_NAME, **fields),
     )
 
 
@@ -81,11 +109,10 @@ def configure_json_logging(level: int = logging.INFO) -> None:
         from actrone_memory.logging import configure_json_logging
         configure_json_logging()
     """
-    import structlog
-
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
+            structlog.stdlib.filter_by_level,
             structlog.stdlib.add_log_level,
             structlog.stdlib.add_logger_name,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
@@ -95,10 +122,16 @@ def configure_json_logging(level: int = logging.INFO) -> None:
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        # Must be the stdlib factory, not PrintLoggerFactory: the stdlib
+        # processors above read `logger.name` and the stdlib level, which a
+        # PrintLogger does not have. Pairing them raises AttributeError on the
+        # first line emitted, and makes the `level` argument do nothing.
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
-    logging.basicConfig(level=level)
+    # format="%(message)s" keeps the rendered JSON as the entire line, with no
+    # stdlib prefix wrapped around it.
+    logging.basicConfig(level=level, format="%(message)s", stream=sys.stdout, force=True)
 
 
 def configure_dev_logging(level: int = logging.DEBUG) -> None:
@@ -111,11 +144,10 @@ def configure_dev_logging(level: int = logging.DEBUG) -> None:
         from actrone_memory.logging import configure_dev_logging
         configure_dev_logging()
     """
-    import structlog
-
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
+            structlog.stdlib.filter_by_level,
             structlog.stdlib.add_log_level,
             structlog.stdlib.add_logger_name,
             structlog.processors.TimeStamper(fmt="%H:%M:%S", utc=False),
@@ -123,7 +155,9 @@ def configure_dev_logging(level: int = logging.DEBUG) -> None:
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        # See configure_json_logging: the stdlib processors above require the
+        # stdlib logger factory.
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
-    logging.basicConfig(level=level)
+    logging.basicConfig(level=level, format="%(message)s", stream=sys.stdout, force=True)

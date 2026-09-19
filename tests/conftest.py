@@ -6,7 +6,7 @@ from actrone_memory.config import MemoryConfig
 from actrone_memory.l2.embedder import Embedder
 from actrone_memory.models import MemoryEntry, Turn
 
-# NOTE: redis/qdrant are OPTIONAL extras (H5) — do NOT import RedisStore/QdrantStore at collection
+# NOTE: redis/qdrant are OPTIONAL extras, so do NOT import RedisStore/QdrantStore at collection
 # time here, or every test run without the durable-backend extras (e.g. the local-first path and the
 # compat-matrix jobs) fails to collect. Integration tests that need them import them lazily.
 
@@ -26,7 +26,7 @@ def fake_config() -> MemoryConfig:
 
 
 class ConstantEmbedder(Embedder):
-    """Returns a fixed embedding vector — deterministic for tests."""
+    """Returns a fixed embedding vector, deterministic for tests."""
 
     @property
     def dimensions(self) -> int:

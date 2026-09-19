@@ -115,7 +115,7 @@ async def test_add_non_text_content_is_noop(
     from autogen_core.memory import MemoryContent, MemoryMimeType
 
     content = MemoryContent(
-        content=b"\x89PNG",  # binary image — not supported
+        content=b"\x89PNG",  # binary image, not supported
         mime_type=MemoryMimeType.IMAGE,
         metadata={},
     )

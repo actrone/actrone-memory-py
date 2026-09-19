@@ -44,7 +44,7 @@ def _require_autogen() -> None:
 class ActroneAutoGenMemory:
     """AutoGen 0.4 Memory protocol implementation backed by actrone-memory.
 
-    Implements ``autogen_core.memory.Memory`` — drop-in for any AutoGen 0.4 agent.
+    Implements ``autogen_core.memory.Memory``, drop-in for any AutoGen 0.4 agent.
 
     Args:
         agent_id: Unique identifier for the agent. Used as the memory namespace.
@@ -107,7 +107,7 @@ class ActroneAutoGenMemory:
 
     async def query(
         self,
-        query: Any,  # noqa: ANN401  — autogen_core.memory.MemoryQuery
+        query: Any,  # noqa: ANN401, autogen_core.memory.MemoryQuery
         cancellation_token: Any | None = None,  # noqa: ANN401
     ) -> MemoryQueryResult:
         """Return memories relevant to the query text."""

@@ -1,6 +1,6 @@
 """Gate E: competitor-adapter mapping (E1) + external-dataset loader (E2).
 
-The competitor SDKs aren't installed in CI, so the adapters are tested by injecting a fake client —
+The competitor SDKs aren't installed in CI, so the adapters are tested by injecting a fake client,
 verifying the two-call MemorySystem surface maps correctly onto each vendor's API shape.
 """
 

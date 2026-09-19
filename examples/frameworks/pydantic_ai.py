@@ -1,4 +1,4 @@
-"""Pydantic AI — mypy-checked example source for the docs."""
+"""Pydantic AI, mypy-checked example source for the docs."""
 # region pydantic_ai
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.pydantic_ai import ActronePydanticAIMemory

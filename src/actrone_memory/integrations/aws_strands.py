@@ -1,11 +1,11 @@
 """AWS Strands memory adapter for actrone-memory (Tier 1).
 
 Strands drives an ``Agent`` from a ``system_prompt``. This adapter returns the ``system_prompt`` to
-give the agent for a turn — the developer's base system prompt with governed Actrone memory appended
-— and persists the completed turn. Strands' session/memory is a storage subsystem rather than a
-simple injectable interface, so the system-prompt path is the idiomatic Tier-1 integration.
+give the agent for a turn: the developer's base system prompt with governed Actrone memory
+appended, and persists the completed turn. Strands' session/memory is a storage subsystem rather
+than a simple injectable interface, so the system-prompt path is the idiomatic Tier-1 integration.
 
-Framework-free: nothing from ``strands`` is imported — this runs against a local, service-free
+Framework-free: nothing from ``strands`` is imported, this runs against a local, service-free
 MemoryManager.
 """
 

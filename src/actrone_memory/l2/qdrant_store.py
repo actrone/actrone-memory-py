@@ -3,24 +3,24 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import httpx
-import structlog
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qmodels
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from actrone_memory.exceptions import MemoryNotFoundError, StoreConnectionError
+from actrone_memory.logging import bind_logger
+from actrone_memory.metrics import track_store_op
 from actrone_memory.models import ContentType, MemoryEntry
 
-log = structlog.get_logger(__name__)
+log = bind_logger(__name__)
 
 _COLLECTION = "agent_memories"
 
-# Retry only TRANSIENT Qdrant errors. Broad catches (Exception) re-attempt
-# programmer bugs and permanent 4xx responses, wasting time and masking the
-# root cause. CLAUDE.md §4.4 / §4.1 require explicit allowlisting.
+# Retry only TRANSIENT Qdrant errors. Retrying everything re-attempts programmer
+# bugs and permanent 4xx responses, which wastes time and masks the root cause,
+# so the transient set is an explicit allowlist.
 _QDRANT_TRANSIENT_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    UnexpectedResponse,
     ResponseHandlingException,
     httpx.TimeoutException,
     httpx.ConnectError,
@@ -30,8 +30,28 @@ _QDRANT_TRANSIENT_EXCEPTIONS: tuple[type[BaseException], ...] = (
     TimeoutError,
 )
 
+# Retryable HTTP status codes: server-side faults plus explicit rate limiting.
+# Every other 4xx (wrong vector width, malformed filter, bad API key) is a
+# permanent error and must surface on the first attempt.
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _is_transient_qdrant_failure(exc: BaseException) -> bool:
+    """Retry predicate that looks through the store's own error wrapper.
+
+    Every method below converts a client error into ``StoreConnectionError``
+    before returning, so a predicate matching only raw client types would never
+    match and the retry policy would silently never fire. The original client
+    exception is preserved on ``StoreConnectionError.cause``.
+    """
+    cause = exc.cause if isinstance(exc, StoreConnectionError) else exc
+    if isinstance(cause, UnexpectedResponse):
+        return cause.status_code in _RETRYABLE_STATUS
+    return isinstance(cause, _QDRANT_TRANSIENT_EXCEPTIONS)
+
+
 _QDRANT_RETRY = retry(
-    retry=retry_if_exception_type(_QDRANT_TRANSIENT_EXCEPTIONS),
+    retry=retry_if_exception(_is_transient_qdrant_failure),
     stop=stop_after_attempt(3),
     wait=wait_exponential_jitter(initial=1, max=10),
     reraise=True,
@@ -85,10 +105,11 @@ class QdrantStore:
     # ------------------------------------------------------------------
 
     @_QDRANT_RETRY
+    @track_store_op("l2", "upsert")
     async def upsert(self, entry: MemoryEntry) -> None:
         """Write a single MemoryEntry to Qdrant. The entry must have an embedding."""
         if entry.embedding is None:
-            raise ValueError(f"MemoryEntry {entry.id} has no embedding — embed before upserting.")
+            raise ValueError(f"MemoryEntry {entry.id} has no embedding, embed before upserting.")
 
         point = qmodels.PointStruct(
             id=entry.id,
@@ -114,6 +135,7 @@ class QdrantStore:
             raise StoreConnectionError("Qdrant", exc) from exc
 
     @_QDRANT_RETRY
+    @track_store_op("l2", "upsert_batch")
     async def upsert_batch(self, entries: list[MemoryEntry]) -> None:
         """Write multiple MemoryEntries in one Qdrant request; skips embeddingless entries."""
         if not entries:
@@ -151,6 +173,7 @@ class QdrantStore:
     # ------------------------------------------------------------------
 
     @_QDRANT_RETRY
+    @track_store_op("l2", "search")
     async def search(
         self,
         agent_id: str,
@@ -160,7 +183,7 @@ class QdrantStore:
         content_types: list[ContentType] | None = None,
         query_text: str | None = None,
     ) -> list[MemoryEntry]:
-        """Hybrid semantic search — dense + lexical + recency fused with RRF (Axis A3).
+        """Hybrid semantic search, dense + lexical + recency fused with RRF.
 
         Qdrant returns the dense (cosine) candidates over ``threshold``; when ``query_text`` is
         given, those candidates are re-ranked by fusing the server cosine score with BM25 over the
@@ -239,7 +262,7 @@ class QdrantStore:
             recency_weight=self._recency_w,
         )
         if fused_order is None:
-            # No lexical signal — classic relevance × cosine + recency × recency blend.
+            # No lexical signal, classic relevance × cosine + recency × recency blend.
             blended = sorted(
                 dense,
                 key=lambda x: self._relevance_w * x[0] + self._recency_w * recency[x[1]],
@@ -252,8 +275,16 @@ class QdrantStore:
     # Delete
     # ------------------------------------------------------------------
 
+    @_QDRANT_RETRY
+    @track_store_op("l2", "delete")
     async def delete(self, memory_id: str) -> None:
-        """Delete a memory by ID. Raises MemoryNotFoundError if not found."""
+        """Delete a memory by ID.
+
+        Raises ``MemoryNotFoundError`` when Qdrant reports the point is absent.
+        Note that Qdrant treats deleting an unknown point id as a success, so a
+        missing id is usually a silent no-op here; callers that need a hard
+        guarantee should read the memory back. ``InMemoryStore`` always raises.
+        """
         try:
             await self._client.delete(
                 collection_name=self._collection,
@@ -266,6 +297,8 @@ class QdrantStore:
         except Exception as exc:
             raise StoreConnectionError("Qdrant", exc) from exc
 
+    @_QDRANT_RETRY
+    @track_store_op("l2", "delete_agent_memories")
     async def delete_agent_memories(self, agent_id: str) -> None:
         """Delete all memories for a given agent. Irreversible."""
         try:
@@ -298,7 +331,7 @@ class QdrantStore:
         dimensions: int = 1536,
         relevance_weight: float = 0.7,
         recency_weight: float = 0.3,
-        timeout: float = 10.0,  # noqa: ASYNC109 — passthrough to Qdrant client, not an asyncio timeout
+        timeout: float = 10.0,  # noqa: ASYNC109, passthrough to Qdrant client, not an asyncio timeout
         grpc_port: int = 6334,
     ) -> QdrantStore:
         """Connect to Qdrant and ensure the collection exists.

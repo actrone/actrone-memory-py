@@ -117,7 +117,7 @@ class ActroneCheckpointer:
         }
 
     async def alist(self, config: dict[str, Any], **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
-        """List checkpoints — yields the single current checkpoint."""
+        """List checkpoints, yields the single current checkpoint."""
         checkpoint = await self.aget(config)
         if checkpoint:
             yield checkpoint

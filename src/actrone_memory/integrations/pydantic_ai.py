@@ -1,11 +1,11 @@
 """Pydantic AI memory adapter for actrone-memory (Tier 1).
 
-Pydantic AI has no memory object — an agent's context comes from its system prompt (static or
+Pydantic AI has no memory object, an agent's context comes from its system prompt (static or
 a ``@agent.system_prompt`` dynamic function) plus ``message_history``. This adapter returns the
 governed Actrone memory as a system-prompt string to register as a dynamic system prompt, and
 persists the completed turn.
 
-Framework-free: nothing from ``pydantic-ai`` is imported — this runs against a local,
+Framework-free: nothing from ``pydantic-ai`` is imported, this runs against a local,
 service-free MemoryManager.
 """
 

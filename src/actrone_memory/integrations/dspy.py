@@ -24,7 +24,7 @@ Usage::
 
         def forward(self, question: str) -> dspy.Prediction:
             context = self.retrieve(question).passages
-            ...
+...
 
     # Store turns after each inference to keep the memory up to date.
     await rm.store_turn(agent_id, session_id, user_msg, assistant_msg)
@@ -54,7 +54,7 @@ def _run_async(coro: Any) -> Any:  # noqa: ANN401
     """Run an async coroutine from sync context without blocking an existing event loop."""
     try:
         asyncio.get_running_loop()
-        # Event loop is running (e.g. Jupyter, FastAPI) — offload to a thread.
+        # Event loop is running (e.g. Jupyter, FastAPI), offload to a thread.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(asyncio.run, coro)
             return future.result()
@@ -66,7 +66,7 @@ class ActroneRM:
     """DSPy Retrieve-compatible module backed by Qdrant L2 semantic search.
 
     Compatible with ``dspy.settings.configure(rm=...)`` and direct module use.
-    Returns a ``dspy.Prediction`` with a ``passages`` attribute — a list of
+    Returns a ``dspy.Prediction`` with a ``passages`` attribute, a list of
     content strings ranked by 0.7 × relevance + 0.3 × recency.
 
     Args:
@@ -115,7 +115,7 @@ class ActroneRM:
         query_or_queries: str | list[str],
         k: int | None = None,
         **_kwargs: Any,
-    ) -> Any:  # noqa: ANN401 — returns dspy.Prediction
+    ) -> Any:  # noqa: ANN401, returns dspy.Prediction
         """Retrieve passages for one or more queries.
 
         Called by DSPy's ``Retrieve`` mechanism. Runs async search synchronously
@@ -189,5 +189,5 @@ class ActroneRM:
         await mm.store_turn(agent_id, session_id, user_message, assistant_message)
 
     async def search_memories(self, query: str, limit: int | None = None) -> list[str]:
-        """Raw async semantic search — returns a list of content strings."""
+        """Raw async semantic search, returns a list of content strings."""
         return await self._search(query, limit if limit is not None else self.k)

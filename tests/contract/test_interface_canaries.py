@@ -1,10 +1,10 @@
-"""Interface canaries — assert the STABLE framework symbols our adapters bind to still exist.
+"""Interface canaries, assert the STABLE framework symbols our adapters bind to still exist.
 
 Driven by the ``contract:`` field in ``compatibility.yaml`` (``module:Symbol``). Each entry is
 ``importorskip``-ed, so the base venv skips them; the compat-matrix CI job installs each framework
 its floor/current/next version and runs these, so a framework that renames or removes a symbol we
 depend on (e.g. ``BaseMemoryService`` → something else) fails *precisely* with "the interface
-changed" rather than a confusing downstream error — the machine version of a "verified against vX".
+changed" rather than a confusing downstream error, the machine version of a "verified against vX".
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ _CONTRACTS = [
 def test_framework_contract_symbol_exists(framework: str, ref: str) -> None:
     module_name, _, symbol = ref.partition(":")
     # Skip ONLY when the framework itself isn't installed (top-level package absent). If it IS
-    # installed but our specific sub-module/symbol is gone, that's a genuine FAILURE — the version
+    # installed but our specific sub-module/symbol is gone, that's a genuine FAILURE, the version
     # is in our declared range yet the interface we bind to no longer exists. `google` is a shared
     # PEP-420 namespace (google-genai, google-adk, …), so its framework root is the first TWO
     # components (e.g. `google.adk`), not bare `google`.
@@ -50,13 +50,13 @@ def test_framework_contract_symbol_exists(framework: str, ref: str) -> None:
         module = importlib.import_module(module_name)
     except ImportError as exc:  # installed, but our target module was removed/moved
         pytest.fail(
-            f"{framework}: '{module_name}' is gone in the installed version — the adapter's "
+            f"{framework}: '{module_name}' is gone in the installed version, the adapter's "
             f"interface changed. Narrow the range in compatibility.yaml or update it. ({exc})"
         )
     obj: object = module
     for attr in symbol.split("."):
         assert hasattr(obj, attr), (
-            f"{framework}: {module_name}.{symbol} — '{attr}' missing; the adapter's assumed "
+            f"{framework}: {module_name}.{symbol}, '{attr}' missing; the adapter's assumed "
             f"interface changed (update the adapter + compatibility.yaml)."
         )
         obj = getattr(obj, attr)

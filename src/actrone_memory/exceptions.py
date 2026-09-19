@@ -5,9 +5,9 @@ class ActroneMemoryError(Exception):
     """Base error for all actrone-memory exceptions.
 
     Every error carries:
-        code    — machine-readable string for programmatic handling (e.g. in logs or alerts)
-        message — human-readable description
-        details — structured dict of context that helps locate the failure
+        code, machine-readable string for programmatic handling (e.g. in logs or alerts)
+        message, human-readable description
+        details, structured dict of context that helps locate the failure
     """
 
     def __init__(
@@ -28,8 +28,8 @@ class ActroneMemoryError(Exception):
 class ConfigurationError(ActroneMemoryError):
     """Raised when required configuration is missing or invalid.
 
-    This always means something is wrong with how the library is set up
-    — not a runtime failure. It should cause the application to exit.
+    This always means something is wrong with how the library is set up, not a runtime failure.
+    It should cause the application to exit.
     """
 
     def __init__(self, message: str, details: dict[str, object] | None = None) -> None:

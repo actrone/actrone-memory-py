@@ -33,17 +33,73 @@ async def test_cached_embedder_uses_cache_on_hit():
     assert result == [0.9, 0.8, 0.7, 0.6]
 
 
+def _batch_cache(*values: bytes | None) -> AsyncMock:
+    """Cache double for ``embed_batch``: one MGET read plus a pipelined write."""
+    cache = AsyncMock()
+    cache.mget.return_value = list(values)
+    pipe = MagicMock()
+    pipe.set = MagicMock()
+    pipe.execute = AsyncMock(return_value=[])
+    cache.pipeline = MagicMock(return_value=pipe)
+    return cache
+
+
 @pytest.mark.asyncio
 async def test_cached_embedder_batch_partial_cache_hit():
-    cache = AsyncMock()
-    cache.get.side_effect = [json.dumps([0.9, 0.8, 0.7, 0.6]).encode(), None]
-    cache.set.return_value = None
+    cache = _batch_cache(json.dumps([0.9, 0.8, 0.7, 0.6]).encode(), None)
 
     embedder = CachedEmbedder(ConstantEmbedder(), cache)
     results = await embedder.embed_batch(["cached text", "uncached text"])
     assert len(results) == 2
     assert results[0] == [0.9, 0.8, 0.7, 0.6]
     assert results[1] == [0.1, 0.2, 0.3, 0.4]
+
+
+@pytest.mark.asyncio
+async def test_cached_embedder_batch_reads_in_one_round_trip():
+    """All lookups go out as a single MGET, never one GET per text."""
+    cache = _batch_cache(None, None, None)
+
+    embedder = CachedEmbedder(ConstantEmbedder(), cache)
+    await embedder.embed_batch(["a", "b", "c"])
+
+    cache.mget.assert_awaited_once()
+    assert len(cache.mget.await_args.args[0]) == 3
+    cache.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cached_embedder_batch_writes_misses_in_one_pipeline():
+    cache = _batch_cache(json.dumps([0.9, 0.8, 0.7, 0.6]).encode(), None, None)
+
+    embedder = CachedEmbedder(ConstantEmbedder(), cache)
+    await embedder.embed_batch(["cached", "miss one", "miss two"])
+
+    pipe = cache.pipeline.return_value
+    assert pipe.set.call_count == 2, "only the misses should be written back"
+    pipe.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cached_embedder_batch_all_hits_skips_inner_and_pipeline():
+    vector = json.dumps([0.9, 0.8, 0.7, 0.6]).encode()
+    cache = _batch_cache(vector, vector)
+    inner = ConstantEmbedder()
+
+    embedder = CachedEmbedder(inner, cache)
+    results = await embedder.embed_batch(["one", "two"])
+
+    assert results == [[0.9, 0.8, 0.7, 0.6], [0.9, 0.8, 0.7, 0.6]]
+    cache.pipeline.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cached_embedder_batch_empty_input_short_circuits():
+    cache = _batch_cache()
+
+    embedder = CachedEmbedder(ConstantEmbedder(), cache)
+    assert await embedder.embed_batch([]) == []
+    cache.mget.assert_not_awaited()
 
 
 @pytest.mark.asyncio

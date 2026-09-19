@@ -1,9 +1,12 @@
-"""Unit tests for hybrid retrieval (Axis A3): BM25, Reciprocal Rank Fusion, and hybrid_rank."""
+"""Unit tests for hybrid retrieval: BM25, Reciprocal Rank Fusion, and hybrid_rank."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
+from actrone_memory.exceptions import EmbeddingError
 from actrone_memory.models import MemoryEntry
 from actrone_memory.retrieval import (
     bm25_scores,
@@ -39,7 +42,7 @@ def test_reciprocal_rank_fusion_combines_channels() -> None:
     lexical = ["z", "x", "y"]
     fused = reciprocal_rank_fusion([dense, lexical])
     # z is 3rd in dense but 1st in lexical; x is 1st in dense, 2nd in lexical.
-    # x: 1/61 + 1/62 ; z: 1/63 + 1/61 — x edges out z, both above y.
+    # x: 1/61 + 1/62 ; z: 1/63 + 1/61, x edges out z, both above y.
     ranked = sorted(fused, key=lambda i: fused[i], reverse=True)
     assert ranked[0] == "x"
     assert ranked[-1] == "y"
@@ -116,3 +119,59 @@ def test_hybrid_rank_without_query_text_is_classic_blend() -> None:
         limit=10,
     )
     assert [e.id for e in ranked] == ["A", "B"]  # pure dense order preserved
+
+
+def test_hybrid_rank_explains_itself_when_no_candidate_carries_an_embedding():
+    """The trap for a custom L2 store: return rows without vectors and get silent zeros.
+
+    hybrid_rank recomputes cosine locally, so a store that does not return embeddings would
+    otherwise receive an empty list and no explanation.
+    """
+    entries = [
+        MemoryEntry(
+            agent_id="a1",
+            session_id="s1",
+            content="no vector came back",
+            content_type="injected",
+            embedding=None,
+            token_count=4,
+        )
+    ]
+
+    with pytest.raises(EmbeddingError, match="must return each entry's embedding"):
+        hybrid_rank(
+            entries,
+            [1.0, 0.0],
+            None,
+            threshold=0.5,
+            relevance_weight=0.7,
+            recency_weight=0.3,
+            limit=10,
+        )
+
+
+def test_hybrid_rank_stays_quiet_when_some_candidates_simply_miss_the_threshold():
+    """A genuinely empty result is not an error, only a wholly embeddingless set is."""
+    entries = [
+        MemoryEntry(
+            agent_id="a1",
+            session_id="s1",
+            content="orthogonal",
+            content_type="injected",
+            embedding=[0.0, 1.0],
+            token_count=4,
+        )
+    ]
+
+    assert (
+        hybrid_rank(
+            entries,
+            [1.0, 0.0],
+            None,
+            threshold=0.5,
+            relevance_weight=0.7,
+            recency_weight=0.3,
+            limit=10,
+        )
+        == []
+    )

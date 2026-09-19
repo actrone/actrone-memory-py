@@ -1,18 +1,18 @@
 #!/usr/bin/env python
-"""compat-matrix (vendored, per-repo) — expand THIS repo's compatibility.yaml into a CI test matrix.
+"""compat-matrix (vendored, per-repo), expand THIS repo's compatibility.yaml into a CI test matrix.
 
 Each framework is tested at THREE range boundaries (floor / current / next), each in its OWN isolated
-environment (frameworks are mutually incompatible — e.g. agent-framework vs openai — so they must never
+environment (frameworks are mutually incompatible, e.g. agent-framework vs openai, so they must never
 share a venv). Reads the repo's ``compatibility.yaml`` (at the repo root, the parent of ci/compat-matrix/)
 and emits the job list as JSON for GitHub Actions ``matrix.include``.
 
     python ci/compat-matrix/matrix.py emit actrone-memory-py
 
 Each job: {package, framework, primary, spec, canary, which, allow_fail}. ``next`` (pre/next-major) jobs
-are ``allow_fail: true`` — early warning, not a gate.
+are ``allow_fail: true``, early warning, not a gate.
 
 Vendored from the workspace ``ci/compat-matrix/`` into this repo (per-repo split). The two Python repos'
-copies are identical — keep them in sync when the shared logic changes.
+copies are identical, keep them in sync when the shared logic changes.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def _spec(primary: str, which: str, version: str, cap: str) -> str:
 
 
 def emit(package: str) -> list[dict[str, object]]:
-    # The repo IS the package: compatibility.yaml sits at the repo root — the parent of ci/compat-matrix/.
+    # The repo IS the package: compatibility.yaml sits at the repo root, the parent of ci/compat-matrix/.
     root = Path(__file__).resolve().parents[2]
     manifest = yaml.safe_load((root / "compatibility.yaml").read_text(encoding="utf-8"))
     canary = CANARY_PATHS[package]

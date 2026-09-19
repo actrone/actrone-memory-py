@@ -2,9 +2,9 @@
 
 Provides two Haystack v2 ``@component``-decorated classes:
 
-- ``ActroneRetriever`` — retrieves relevant memories from Qdrant L2 as Haystack
+- ``ActroneRetriever``, retrieves relevant memories from Qdrant L2 as Haystack
   ``Document`` objects. Drop-in for any Haystack RAG pipeline.
-- ``ActroneWriter`` — stores a user/assistant conversation turn to Redis L1 and
+- ``ActroneWriter``, stores a user/assistant conversation turn to Redis L1 and
   Qdrant L2. Connect after your LLM component to auto-persist conversations.
 
 Install::
@@ -115,17 +115,17 @@ class ActroneRetriever:
         return {"documents": documents}
 
     def run(self, query: str, top_k: int | None = None) -> dict[str, Any]:
-        """Synchronous entrypoint — Haystack's default pipeline executor calls this."""
+        """Synchronous entrypoint, Haystack's default pipeline executor calls this."""
         import asyncio
 
         try:
-            # Probe for a running loop; the binding is unused — we only branch on
+            # Probe for a running loop; the binding is unused, we only branch on
             # whether the call raises.
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(self.run_async(query, top_k))
 
-        # Existing event loop — run in a thread to avoid blocking it.
+        # Existing event loop, run in a thread to avoid blocking it.
         import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

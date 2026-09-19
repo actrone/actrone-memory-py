@@ -1,11 +1,11 @@
 """Claude Agent SDK memory adapter for actrone-memory (Tier 1).
 
 The Claude Agent SDK's ``query(prompt, options=ClaudeAgentOptions(system_prompt=...))`` accepts a
-system prompt. This adapter returns the system prompt for a turn — the developer's base system
-prompt with governed Actrone memory appended — and persists the completed turn. The SDK has no
+system prompt. This adapter returns the system prompt for a turn, the developer's base system
+prompt with governed Actrone memory appended, and persists the completed turn. The SDK has no
 formal memory interface, so the system-prompt path is the idiomatic integration.
 
-Framework-free: nothing from ``claude-agent-sdk`` is imported — this runs against a local,
+Framework-free: nothing from ``claude-agent-sdk`` is imported, this runs against a local,
 service-free MemoryManager. Mirrors the TypeScript ``claudeAgentMemory`` adapter.
 """
 
@@ -26,7 +26,7 @@ class ActroneClaudeAgentMemory(BaseActroneMemory):
         sys_prompt = await memory.append_to_system_prompt("You are support.", user_input)
         options = ClaudeAgentOptions(system_prompt=sys_prompt)
         async for msg in query(prompt=user_input, options=options):
-            ...
+...
         await memory.remember(user_input, answer)
     """
 

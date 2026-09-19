@@ -1,8 +1,7 @@
 """Sphinx configuration for the Actrone Memory (Python) API reference.
 
-Generated from the ``actrone_memory`` package source (docstrings + type hints) — the OSS memory
-library's single source of truth (Public-Domain Cutover Runbook Phase 6, item 4). Generation is a
-build/CI step; the output is never committed.
+Generated from the ``actrone_memory`` package source (docstrings + type hints), the OSS memory
+library's single source of truth. Generation is a build/CI step; the output is never committed.
 """
 
 from __future__ import annotations

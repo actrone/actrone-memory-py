@@ -1,6 +1,13 @@
-"""Contract tests for the LangChain memory adapter (Tier-2 native ``BaseMemory``).
+"""Contract tests for the LangChain adapters.
 
-Skipped automatically when langchain-core is not installed.
+Two Tier-2 surfaces, gated differently because LangChain changed shape between majors:
+
+* ``ActroneMemory`` needs ``langchain_core.memory.BaseMemory``, removed in LangChain 1.x, so
+  its tests are skipped on 1.x and a dedicated test asserts the version-specific error there.
+* ``ActroneChatMessageHistory`` targets ``BaseChatMessageHistory``, identical across 0.x and
+  1.x, so its tests run on every supported version.
+
+Skipped entirely when langchain-core is not installed.
 Run with: pip install actrone-memory[langchain] && pytest tests/contract/test_langchain.py
 """
 from __future__ import annotations
@@ -9,10 +16,20 @@ import pytest
 
 langchain_core = pytest.importorskip("langchain_core", reason="langchain-core not installed")
 
+import importlib.util
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from actrone_memory.integrations.langchain import ActroneMemory
-from actrone_memory.models import MemoryEntry
+from actrone_memory.integrations.langchain import ActroneChatMessageHistory, ActroneMemory
+from actrone_memory.models import MemoryEntry, Turn
+
+_HAS_BASE_MEMORY = importlib.util.find_spec("langchain_core.memory") is not None
+
+requires_base_memory = pytest.mark.skipif(
+    not _HAS_BASE_MEMORY, reason="langchain_core.memory was removed in LangChain 1.x"
+)
+requires_no_base_memory = pytest.mark.skipif(
+    _HAS_BASE_MEMORY, reason="only meaningful on LangChain 1.x, which dropped BaseMemory"
+)
 
 
 @pytest.fixture
@@ -35,7 +52,11 @@ def mock_mm() -> AsyncMock:
     )
     mm.store_turn = AsyncMock(return_value="turn-1")
     mm.clear_session = AsyncMock()
+    mm.get_recent_turns = AsyncMock(return_value=[])
     return mm
+
+
+# ── Tier 2 on LangChain 0.x: BaseMemory ──────────────────────────────────────
 
 
 @pytest.fixture
@@ -43,6 +64,7 @@ def memory(mock_mm: AsyncMock) -> ActroneMemory:
     return ActroneMemory(agent_id="agent-1", session_id="default", memory_manager=mock_mm)
 
 
+@requires_base_memory
 @pytest.mark.asyncio
 async def test_build_context_returns_governed_string(memory: ActroneMemory) -> None:
     # Tier-1 framework-free path: a single governed system-context block.
@@ -51,6 +73,7 @@ async def test_build_context_returns_governed_string(memory: ActroneMemory) -> N
     assert "What is 2+2?" in context  # recent turn
 
 
+@requires_base_memory
 @pytest.mark.asyncio
 async def test_build_context_empty_when_nothing_relevant(mock_mm: AsyncMock) -> None:
     mock_mm.retrieve_context = AsyncMock(
@@ -60,10 +83,12 @@ async def test_build_context_empty_when_nothing_relevant(mock_mm: AsyncMock) -> 
     assert await memory.build_context("anything") == ""
 
 
+@requires_base_memory
 def test_memory_variables_is_history(memory: ActroneMemory) -> None:
     assert memory.memory_variables == ["history"]
 
 
+@requires_base_memory
 @pytest.mark.asyncio
 async def test_load_memory_variables_returns_history_with_turns_and_memories(
     memory: ActroneMemory,
@@ -75,16 +100,30 @@ async def test_load_memory_variables_returns_history_with_turns_and_memories(
     assert "Arithmetic is fun." in out["history"]
 
 
+@requires_base_memory
 @pytest.mark.asyncio
 async def test_save_context_persists_the_turn(memory: ActroneMemory, mock_mm: AsyncMock) -> None:
     await memory.save_context({"input": "hi"}, {"response": "hello"})
     mock_mm.store_turn.assert_awaited_once_with("agent-1", "default", "hi", "hello")
 
 
+@requires_base_memory
 @pytest.mark.asyncio
 async def test_clear_delegates_to_manager(memory: ActroneMemory, mock_mm: AsyncMock) -> None:
     await memory.clear()
     mock_mm.clear_session.assert_awaited_once_with("agent-1", "default")
+
+
+@requires_no_base_memory
+def test_base_memory_adapter_explains_itself_on_langchain_1x(mock_mm: AsyncMock) -> None:
+    """On 1.x the error must name the alternatives, not just fail to import."""
+    with pytest.raises(ImportError) as exc_info:
+        ActroneMemory(agent_id="agent-1", session_id="default", memory_manager=mock_mm)
+
+    message = str(exc_info.value)
+    assert "ActroneChatMessageHistory" in message
+    assert "removed the BaseMemory abstraction" in message
+    assert "langchain-core<1" in message
 
 
 def test_import_error_without_langchain() -> None:
@@ -93,3 +132,123 @@ def test_import_error_without_langchain() -> None:
         ImportError, match=r"pip install actrone-memory\[langchain\]"
     ):
         ActroneMemory(agent_id="agent-1", session_id="default")
+
+
+# ── Tier 2 across both majors: BaseChatMessageHistory ────────────────────────
+
+
+@pytest.fixture
+def history(mock_mm: AsyncMock) -> ActroneChatMessageHistory:
+    return ActroneChatMessageHistory(
+        agent_id="agent-1", session_id="default", memory_manager=mock_mm
+    )
+
+
+def test_chat_history_satisfies_the_base_interface(history: ActroneChatMessageHistory) -> None:
+    """Structural check against the real abstract class, which exists in both majors."""
+    from langchain_core.chat_history import BaseChatMessageHistory
+
+    for name in ("aget_messages", "aadd_messages", "aclear", "add_messages", "clear"):
+        assert hasattr(BaseChatMessageHistory, name), f"upstream dropped {name}"
+        assert hasattr(history, name), f"adapter missing {name}"
+
+
+@pytest.mark.asyncio
+async def test_chat_history_pairs_human_then_ai_into_one_turn(
+    history: ActroneChatMessageHistory, mock_mm: AsyncMock
+) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    await history.aadd_messages([HumanMessage(content="hi"), AIMessage(content="hello")])
+
+    mock_mm.store_turn.assert_awaited_once_with("agent-1", "default", "hi", "hello")
+
+
+@pytest.mark.asyncio
+async def test_chat_history_flushes_an_unpaired_human_rather_than_dropping_it(
+    history: ActroneChatMessageHistory, mock_mm: AsyncMock
+) -> None:
+    from langchain_core.messages import HumanMessage
+
+    await history.aadd_messages([HumanMessage(content="first"), HumanMessage(content="second")])
+
+    # "first" is stored with an empty response; "second" stays pending for the next AI reply.
+    mock_mm.store_turn.assert_awaited_once_with("agent-1", "default", "first", "")
+
+
+@pytest.mark.asyncio
+async def test_chat_history_ignores_system_and_tool_messages(
+    history: ActroneChatMessageHistory, mock_mm: AsyncMock
+) -> None:
+    from langchain_core.messages import SystemMessage
+
+    await history.aadd_messages([SystemMessage(content="you are helpful")])
+
+    mock_mm.store_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_chat_history_reads_turns_back_as_messages(
+    history: ActroneChatMessageHistory, mock_mm: AsyncMock
+) -> None:
+    mock_mm.get_recent_turns = AsyncMock(
+        return_value=[
+            Turn(session_id="default", user_message="hi", assistant_message="hello"),
+            Turn(session_id="default", user_message="unanswered", assistant_message=""),
+        ]
+    )
+
+    messages = await history.aget_messages()
+
+    assert [m.type for m in messages] == ["human", "ai", "human"]
+    assert [m.content for m in messages] == ["hi", "hello", "unanswered"]
+
+
+@pytest.mark.asyncio
+async def test_chat_history_handles_content_block_lists(
+    history: ActroneChatMessageHistory, mock_mm: AsyncMock
+) -> None:
+    """LangChain 1.x messages may carry a list of content blocks instead of a string."""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    blocks = [{"type": "text", "text": "block "}, {"type": "text", "text": "text"}]
+    await history.aadd_messages([HumanMessage(content=blocks), AIMessage(content="ok")])
+
+    mock_mm.store_turn.assert_awaited_once_with("agent-1", "default", "block text", "ok")
+
+
+@pytest.mark.asyncio
+async def test_chat_history_clear_resets_pending_and_session(
+    history: ActroneChatMessageHistory, mock_mm: AsyncMock
+) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    await history.aadd_messages([HumanMessage(content="pending")])
+    await history.aclear()
+    await history.aadd_messages([AIMessage(content="reply")])
+
+    mock_mm.clear_session.assert_awaited_once_with("agent-1", "default")
+    # The cleared pending human must not resurface attached to the next AI message.
+    mock_mm.store_turn.assert_awaited_once_with("agent-1", "default", "", "reply")
+
+
+@pytest.mark.parametrize(
+    ("member", "args", "alternative"),
+    [
+        ("add_messages", ([],), "aadd_messages"),
+        ("add_message", (None,), "aadd_messages"),
+        ("clear", (), "aclear"),
+    ],
+)
+def test_chat_history_sync_members_point_at_the_async_one(
+    history: ActroneChatMessageHistory, member: str, args: tuple[object, ...], alternative: str
+) -> None:
+    with pytest.raises(NotImplementedError, match=alternative):
+        getattr(history, member)(*args)
+
+
+def test_chat_history_sync_messages_property_points_at_async(
+    history: ActroneChatMessageHistory,
+) -> None:
+    with pytest.raises(NotImplementedError, match="aget_messages"):
+        _ = history.messages

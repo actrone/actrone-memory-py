@@ -1,12 +1,12 @@
 """OpenAI Agents SDK memory adapter for actrone-memory (Tier 1).
 
 The OpenAI Agents SDK carries an agent's context in its ``instructions``. This adapter returns
-the ``instructions`` to give an ``Agent`` for a turn — the developer's base instructions with
-governed Actrone memory prepended — and persists the completed turn. The Agents SDK has no
+the ``instructions`` to give an ``Agent`` for a turn, the developer's base instructions with
+governed Actrone memory prepended, and persists the completed turn. The Agents SDK has no
 formal memory object to conform to (its ``Session`` is a transcript store, not an injectable
 memory interface), so the system-instructions path is the idiomatic integration.
 
-Framework-free: nothing from ``openai-agents`` is imported — this runs against a local,
+Framework-free: nothing from ``openai-agents`` is imported, this runs against a local,
 service-free MemoryManager. Mirrors the TypeScript ``openaiAgentsMemory`` adapter.
 """
 

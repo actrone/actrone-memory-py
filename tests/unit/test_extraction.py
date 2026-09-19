@@ -16,7 +16,7 @@ from actrone_memory.manager import MemoryManager
 
 
 class FakeExtractor:
-    """Deterministic FactExtractor for tests — no LLM."""
+    """Deterministic FactExtractor for tests, no LLM."""
 
     def __init__(self, facts: list[ExtractedFact]) -> None:
         self.facts = facts

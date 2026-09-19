@@ -2,10 +2,10 @@
 
 Semantic Kernel drives a chat agent from a ``ChatHistory``. This adapter offers:
 
-- **Tier 1** — :meth:`ActroneSemanticKernelMemory.system_message`: the governed memory as a
+- **Tier 1**, :meth:`ActroneSemanticKernelMemory.system_message`: the governed memory as a
   string to add as a system message before invoking the kernel.
-- **Tier 2** — :meth:`ActroneSemanticKernelMemory.add_to_chat_history`: populate a real SK
-  ``ChatHistory`` in place via its ``add_system_message`` method (duck-typed — no import of
+- **Tier 2**, :meth:`ActroneSemanticKernelMemory.add_to_chat_history`: populate a real SK
+  ``ChatHistory`` in place via its ``add_system_message`` method (duck-typed, no import of
   ``semantic-kernel`` at runtime, so the adapter stays dependency-free and testable with a fake).
 
 Then persist the completed turn with :meth:`remember`.
@@ -35,7 +35,7 @@ class ActroneSemanticKernelMemory(BaseActroneMemory):
 
         memory = ActroneSemanticKernelMemory(agent_id="support-bot", session_id="s1")
         history = ChatHistory()
-        await memory.add_to_chat_history(history, user_input)   # Tier 2 — native ChatHistory
+        await memory.add_to_chat_history(history, user_input)   # Tier 2, native ChatHistory
         history.add_user_message(user_input)
         # ...invoke the kernel/agent with `history`...
         await memory.remember(user_input, answer)

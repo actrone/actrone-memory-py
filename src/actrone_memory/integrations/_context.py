@@ -1,13 +1,13 @@
 """Framework-agnostic building blocks shared by the actrone-memory adapters.
 
 Every framework adapter needs the same two things: turn a query into a governed
-**system-context string** (Tier 1 — the universally-correct, framework-free path), and
+**system-context string** (Tier 1, the universally-correct, framework-free path), and
 persist a completed turn. :class:`BaseActroneMemory` provides both plus lazy
 :class:`~actrone_memory.manager.MemoryManager` lifecycle, so each per-framework adapter only
 adds that framework's native method names (and, where the framework has a formal memory
 interface, its Tier-2 conformance).
 
-Nothing here imports any agent framework — these helpers run against a local in-memory /
+Nothing here imports any agent framework, these helpers run against a local in-memory /
 hashing MemoryManager with no services and no API key.
 """
 
@@ -57,8 +57,8 @@ def format_memory_context(ctx: RetrievedContext) -> str:
     """Render a retrieved context into a single governed system-prompt string.
 
     Returns ``""`` when there is nothing relevant, so callers can cheaply skip prepending an
-    empty block. Long-term (episodic) memory leads, followed by the recent conversation —
-    the shape every framework's ``system`` / ``instructions`` slot expects.
+    empty block. Long-term (episodic) memory leads, followed by the recent conversation: the
+    shape every framework's ``system`` / ``instructions`` slot expects.
     """
     parts: list[str] = []
     if ctx.episodic_memories:
@@ -77,7 +77,7 @@ class BaseActroneMemory:
 
     Subclasses add the framework's native method names (e.g. ``instructions_for`` /
     ``search_memory`` / ``invoking``); this base owns the manager lifecycle and the two
-    primitives every adapter needs — :meth:`build_context` and :meth:`remember`.
+    primitives every adapter needs, :meth:`build_context` and :meth:`remember`.
 
     Args:
         agent_id:       Agent whose memory namespace is used.
@@ -85,7 +85,7 @@ class BaseActroneMemory:
         token_budget:   Context token budget for retrieval (default 4096).
         config:         Optional :class:`MemoryConfig`; used to lazily create a manager.
         memory_manager: An existing manager to reuse (e.g. shared across agents). When
-            omitted, one is created on first use from ``config`` — local-first, no services.
+            omitted, one is created on first use from ``config``, local-first, no services.
     """
 
     def __init__(

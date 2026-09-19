@@ -1,5 +1,5 @@
 """
-Example 01 — Pure Python with OpenAI
+Example 01, Pure Python with OpenAI
 
 Demonstrates using actrone-memory directly with the OpenAI client,
 without any framework (LangChain, LangGraph, CrewAI, etc.).
@@ -98,7 +98,7 @@ async def main() -> None:
             "My name is Alex and I'm building a trading bot.",
             "What are the main risks I should consider?",
             "How should I handle market hours and weekends?",
-            # Come back later — memory persists across sessions
+            # Come back later, memory persists across sessions
             "Remind me, what project was I working on?",
         ]
 

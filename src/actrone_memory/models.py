@@ -15,12 +15,12 @@ ContentType = Literal["turn", "summary", "tool_result", "injected", "fact"]
 
 # ── Provenance-typing v1 (the governance seed that graduates to hosted) ──────
 # Every stored fact carries *where it came from* and *how sensitive it is*, so a
-# memory can be filtered, attributed, and erased by policy — even in the free,
+# memory can be filtered, attributed, and erased by policy, even in the free,
 # local library. These vocabularies are the language-neutral memory spec shared
 # with the TypeScript lib and the hosted engine; keep the two enums in lockstep.
 
 # Origin/attribution of a memory. Free-form callers may also pass a namespaced
-# string (e.g. "tool:web_search", "import:crm") — the typed values are the
+# string (e.g. "tool:web_search", "import:crm"), the typed values are the
 # canonical set; anything else is accepted as an opaque source label.
 MemorySource = Literal[
     "user",  # stated by the end user
@@ -84,7 +84,7 @@ class Turn(BaseModel):
 
 
 class RetrievedContext(BaseModel):
-    """Output of MemoryManager.retrieve_context — ready to inject into an LLM prompt."""
+    """Output of MemoryManager.retrieve_context, ready to inject into an LLM prompt."""
 
     recent_turns: list[Turn]
     episodic_memories: list[MemoryEntry]

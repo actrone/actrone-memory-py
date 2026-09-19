@@ -1,10 +1,10 @@
-"""Optional cross-encoder reranking over the top-K candidates (Axis A4).
+"""Optional cross-encoder reranking over the top-K candidates.
 
 A bi-encoder (the embedder) scores query and document independently; a **cross-encoder** scores the
-*pair* jointly and is markedly more precise — but O(K) model calls, so it is only worth running over
-a small over-fetched candidate set. **Honest constraint:** reranking lifts *precision*, not recall —
-it can only reorder what retrieval already fetched, so it must sit *after* an over-fetch. Off by
-default (one model download + K inferences per query); enable with ``rerank_enabled=True``.
+*pair* jointly and is markedly more precise, but O(K) model calls, so it is only worth running over
+a small over-fetched candidate set. **Honest constraint:** reranking lifts *precision*, not
+recall: it can only reorder what retrieval already fetched, so it must sit *after* an over-fetch.
+Off by default (one model download + K inferences per query); enable with ``rerank_enabled=True``.
 
 Uses ``fastembed``'s ONNX ``TextCrossEncoder`` (the ``[onnx]`` extra, no torch), so it keeps the
 local-first / zero-egress promise: one model download, offline thereafter.
@@ -15,11 +15,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 
-import structlog
-
+from actrone_memory.logging import bind_logger
 from actrone_memory.models import MemoryEntry
 
-log = structlog.get_logger(__name__)
+log = bind_logger(__name__)
 
 # A small, widely-used cross-encoder (~90 MB ONNX). Override via MemoryConfig.rerank_model.
 DEFAULT_RERANK_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2"

@@ -5,7 +5,7 @@
 #
 #   run.sh <canary-path> <pip-spec> <framework> <which>
 #
-# If ACTRONE_MEMORY_SRC is set (a path to a checked-out actrone-memory-py), it is installed FIRST — the
+# If ACTRONE_MEMORY_SRC is set (a path to a checked-out actrone-memory-py), it is installed FIRST, the
 # actrone-py workflow sets this because actrone-py depends on actrone-memory (plain pip can't resolve
 # the pyproject's uv source). It is unset for actrone-memory-py, which has no such dependency.
 #

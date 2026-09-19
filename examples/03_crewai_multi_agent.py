@@ -1,9 +1,9 @@
 """
-Example 03 — CrewAI Multi-Agent with Shared Memory
+Example 03, CrewAI Multi-Agent with Shared Memory
 
 Each agent in the crew gets its own persistent memory namespace.
 Research findings written by the Researcher are retrievable by the
-Analyst in future sessions — enabling true cross-turn, cross-agent recall.
+Analyst in future sessions, enabling true cross-turn, cross-agent recall.
 
 Prerequisites:
     pip install "actrone-memory[crewai]" crewai
@@ -28,7 +28,7 @@ async def demo_memory_api() -> None:
     Demonstrates the memory contract the CrewAI backend uses,
     runnable without CrewAI installed.
     """
-    # Researcher agent memory — saves findings
+    # Researcher agent memory, saves findings
     researcher_memory = ActroneCrewMemory(
         agent_id="research-crew",
         session_id="analyst-session",
@@ -48,7 +48,7 @@ async def demo_memory_api() -> None:
 
     print("Researcher saved 2 findings to memory.\n")
 
-    # Analyst agent memory — searches the same namespace
+    # Analyst agent memory, searches the same namespace
     analyst_memory = ActroneCrewMemory(
         agent_id="research-crew",   # same crew namespace
         session_id="analyst-session",
@@ -62,7 +62,7 @@ async def demo_memory_api() -> None:
 
 
 async def demo_with_crewai() -> None:
-    """Full CrewAI integration — only runs if crewai is installed."""
+    """Full CrewAI integration, only runs if crewai is installed."""
     try:
         from crewai import Agent, Crew, Task
         from langchain_openai import ChatOpenAI
@@ -103,7 +103,9 @@ async def demo_with_crewai() -> None:
     )
 
     analysis_task = Task(
-        description="Based on the research findings, produce a buy/hold/sell recommendation for AAPL.",
+        description=(
+            "Based on the research findings, produce a buy/hold/sell recommendation for AAPL."
+        ),
         agent=analyst,
         expected_output="Investment thesis with recommendation and supporting rationale.",
         context=[research_task],

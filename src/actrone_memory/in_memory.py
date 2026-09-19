@@ -4,12 +4,11 @@ import math
 import time
 from datetime import datetime
 
-import structlog
-
 from actrone_memory.exceptions import MemoryNotFoundError
+from actrone_memory.logging import bind_logger
 from actrone_memory.models import ContentType, MemoryEntry, SessionMetadata, Turn
 
-log = structlog.get_logger(__name__)
+log = bind_logger(__name__)
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -41,13 +40,13 @@ class InMemoryStore:
     """Zero-dependency, in-process store implementing **both** memory tiers.
 
     This is the local-first default: it needs no Redis and no Qdrant, so
-    ``MemoryManager.create()`` runs with zero external services — parity with the
+    ``MemoryManager.create()`` runs with zero external services, parity with the
     TypeScript ``@actrone/memory`` on-ramp. Data lives for the lifetime of the
     process; swap in :class:`RedisStore` + :class:`QdrantStore` for durability and
     horizontal scale.
 
     Concurrency: every method is synchronous internally (no ``await`` points), so
-    operations are atomic with respect to the asyncio event loop — concurrent
+    operations are atomic with respect to the asyncio event loop, concurrent
     background tasks (e.g. summarisation) cannot interleave a partial mutation.
     """
 
@@ -65,11 +64,11 @@ class InMemoryStore:
         self._turns: dict[str, list[Turn]] = {}
         self._created_at: dict[str, datetime] = {}
         self._summary_locks: dict[str, float] = {}  # session_key -> monotonic expiry
-        # L2 state — memories keyed by agent_id
+        # L2 state, memories keyed by agent_id
         self._memories: dict[str, list[MemoryEntry]] = {}
 
     # ------------------------------------------------------------------
-    # L1 — hot session tier
+    # L1, hot session tier
     # ------------------------------------------------------------------
 
     async def append_turn(self, agent_id: str, session_id: str, turn: Turn) -> None:
@@ -120,7 +119,7 @@ class InMemoryStore:
         """SET-NX-EX equivalent. Returns True for the first caller within a TTL window.
 
         Deduplicates concurrent summarisations within this process and throttles
-        re-summarisation, exactly like the Redis ``SET key NX EX ttl`` lock — but
+        re-summarisation, exactly like the Redis ``SET key NX EX ttl`` lock, but
         scoped to this process (in-memory backends are single-instance by design).
         """
         key = _session_key(agent_id, session_id)
@@ -132,13 +131,13 @@ class InMemoryStore:
         return True
 
     # ------------------------------------------------------------------
-    # L2 — cold semantic tier
+    # L2, cold semantic tier
     # ------------------------------------------------------------------
 
     async def upsert(self, entry: MemoryEntry) -> None:
         if entry.embedding is None:
             raise ValueError(
-                f"MemoryEntry {entry.id} has no embedding — embed before upserting."
+                f"MemoryEntry {entry.id} has no embedding, embed before upserting."
             )
         bucket = self._memories.setdefault(entry.agent_id, [])
         for i, existing in enumerate(bucket):
@@ -156,14 +155,14 @@ class InMemoryStore:
         content_types: list[ContentType] | None = None,
         query_text: str | None = None,
     ) -> list[MemoryEntry]:
-        """Hybrid relevance search — dense + lexical + recency fused with RRF (Axis A3).
+        """Hybrid relevance search, dense + lexical + recency fused with RRF.
 
         Only memories with embedding cosine ≥ ``threshold`` are admitted; among those, the ranking
         fuses embedding cosine, BM25 over the content (when ``query_text`` is given), and recency
         via Reciprocal Rank Fusion. Without ``query_text`` (or with no shared terms) it degrades to
         the classic ``relevance × cosine + recency × recency`` blend, matching :class:`QdrantStore`.
 
-        Time complexity: O(n) similarity scoring + O(n log n) rank over the agent's memories —
+        Time complexity: O(n) similarity scoring + O(n log n) rank over the agent's memories,
         acceptable for the in-process on-ramp (bounded by ``max_episodic_memories``).
         """
         from actrone_memory.retrieval import hybrid_rank
@@ -202,4 +201,4 @@ class InMemoryStore:
         self._memories.pop(agent_id, None)
 
     async def close(self) -> None:
-        """No-op — the in-memory store holds no external connections."""
+        """No-op, the in-memory store holds no external connections."""

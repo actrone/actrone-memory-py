@@ -1,6 +1,6 @@
 # Security Policy
 
-`actrone-memory` stores raw conversation history, semantic memory vectors, and session metadata. A vulnerability in this library could expose real user data — so we take security reports seriously and act on them quickly.
+`actrone-memory` stores raw conversation history, semantic memory vectors, and session metadata. A vulnerability in this library could expose real user data, so we take security reports seriously and act on them quickly.
 
 ---
 
@@ -12,16 +12,16 @@ Instead, email us privately at **[security@actrone.com](mailto:security@actrone.
 
 1. A clear description of what the vulnerability is
 2. Which part of the library is affected (e.g. `RedisStore`, `QdrantStore`, the LangChain adapter, etc.)
-3. Steps to reproduce it — a minimal code example helps enormously
+3. Steps to reproduce it, a minimal code example helps enormously
 4. Your assessment of the impact (e.g. "an attacker could read another user's conversation history")
-5. Your name or handle if you'd like credit in the release notes — or let us know if you prefer to stay anonymous
+5. Your name or handle if you'd like credit in the release notes, or let us know if you prefer to stay anonymous
 
 **What happens next:**
 
 | Timeline | What we do |
 | --- | --- |
 | Within 72 hours | We acknowledge your report and confirm we received it |
-| Days 1–14 | We investigate, develop a fix, and review it internally |
+| Days 1-14 | We investigate, develop a fix, and review it internally |
 | Day 15 | We publish a patched release and a public advisory |
 
 We will not take legal action against researchers who follow this policy. We consider responsible disclosure a service to the community.
@@ -34,7 +34,7 @@ These are the parts of the library where security matters most. Understanding th
 
 ### Conversation data stored in plain text
 
-Everything you pass to `store_turn()` — user messages, assistant responses, tool results — is stored as plain text in Redis. Redis does not encrypt data at rest by default.
+Everything you pass to `store_turn()`, user messages, assistant responses, tool results, is stored as plain text in Redis. Redis does not encrypt data at rest by default.
 
 **What to do:**
 
@@ -55,11 +55,11 @@ Vector payloads in Qdrant include the original text of the memory. Anyone who ca
 
 ### Injected memories appear in LLM prompts
 
-If an attacker can call `inject_memory()` — or write malicious content into a turn — that content will be embedded and surfaced in future prompts. This is a form of **prompt injection via memory**.
+If an attacker can call `inject_memory()`, or write malicious content into a turn, that content will be embedded and surfaced in future prompts. This is a form of **prompt injection via memory**.
 
 **What to do:**
 
-- Treat `inject_memory()` as an admin operation — protect it behind authentication
+- Treat `inject_memory()` as an admin operation, protect it behind authentication
 - Validate and sanitise all user input before storing it
 - Audit injected memories periodically using `search_memories()`
 

@@ -31,7 +31,7 @@ htmlcov/
 .dmypy.json
 .ruff_cache/
 
-# Env files — only the example is committed
+# Env files, only the example is committed
 .env
 .env.local
 !.env.example

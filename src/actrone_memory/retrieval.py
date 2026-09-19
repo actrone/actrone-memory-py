@@ -1,16 +1,16 @@
-"""Hybrid retrieval — dense + lexical + recency fused with Reciprocal Rank Fusion (Axis A3).
+"""Hybrid retrieval, dense + lexical + recency fused with Reciprocal Rank Fusion .
 
 The OSS default recall used a single ranking channel (embedding cosine, blended with recency). With
 a weak/lexical default embedder that under-recalls; with a strong dense embedder it still misses
 exact-keyword matches. **Reciprocal Rank Fusion (RRF)** combines several independent rankings into
-one without needing their scores to be on the same scale — the standard, parameter-light way to do
+one without needing their scores to be on the same scale, the standard, parameter-light way to do
 hybrid (dense + lexical) retrieval.
 
 This module is pure and dependency-free (BM25 is implemented here, no external index), so it works
 identically in the in-process store and behind Qdrant. Fusion re-ranks **within the dense-threshold
-admitted set**, so the "only sufficiently-relevant memories are returned" contract is unchanged —
-RRF only reorders which relevant memory surfaces first, adding an exact-keyword (lexical) signal the
-pure embedding channel lacks.
+admitted set**, so the "only sufficiently-relevant memories are returned" contract is unchanged:
+RRF only reorders which relevant memory surfaces first, adding an exact-keyword (lexical) signal
+the pure embedding channel lacks.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from actrone_memory.exceptions import EmbeddingError
 from actrone_memory.in_memory import cosine_similarity
 from actrone_memory.models import MemoryEntry
 
@@ -31,7 +32,7 @@ DEFAULT_RRF_K = 60
 
 
 def tokenize(text: str) -> list[str]:
-    """Lowercase alphanumeric word tokens — the shared tokenisation for lexical scoring."""
+    """Lowercase alphanumeric word tokens, the shared tokenisation for lexical scoring."""
     return _WORD_RE.findall(text.lower())
 
 
@@ -40,10 +41,10 @@ def bm25_scores(
 ) -> dict[str, float]:
     """Okapi BM25 relevance of ``query`` against each document, keyed by document id.
 
-    Dependency-free and computed over the (small, bounded) candidate set only — no persistent
+    Dependency-free and computed over the (small, bounded) candidate set only, no persistent
     index. Returns a score per document; a document sharing no query term scores ``0.0``.
 
-    Time complexity: O(Q · D) over Q query terms and D candidate documents — acceptable because the
+    Time complexity: O(Q · D) over Q query terms and D candidate documents, acceptable because the
     candidate set is bounded (``max_episodic_memories`` / the over-fetch limit).
     """
     q_terms = set(tokenize(query))
@@ -151,7 +152,7 @@ def _classic_blend(
     recency_weight: float,
     limit: int,
 ) -> list[MemoryEntry]:
-    """The pre-hybrid weighted-sum ranking — used when there is no lexical signal to fuse."""
+    """The pre-hybrid weighted-sum ranking, used when there is no lexical signal to fuse."""
     ranked = sorted(
         scored,
         key=lambda pair: relevance_weight * pair[0] + recency_weight * recency[pair[1].id],
@@ -174,8 +175,8 @@ def hybrid_rank(
     """Rank the dense-threshold-admitted memories by fusing dense + lexical + recency channels.
 
     Admission is unchanged: an entry is eligible only if its embedding cosine ≥ ``threshold``. Among
-    the eligible set, three rankings are fused with RRF — embedding cosine (dense), BM25 over the
-    content (lexical), and recency — so an exact-keyword match the embedder under-ranked can still
+    the eligible set, three rankings are fused with RRF, embedding cosine (dense), BM25 over the
+    content (lexical), and recency, so an exact-keyword match the embedder under-ranked can still
     surface first. When ``query_text`` yields no lexical signal (blank query, or no shared terms)
     the function degrades to the classic ``relevance·cosine + recency·recency`` blend, keeping
     behaviour identical to the pre-hybrid path.
@@ -183,8 +184,10 @@ def hybrid_rank(
     now_ts = datetime.now(UTC).timestamp()
     eligible: list[tuple[float, MemoryEntry]] = []
     recency: dict[str, float] = {}
+    missing_embeddings = 0
     for entry in entries:
         if entry.embedding is None:
+            missing_embeddings += 1
             continue
         sim = cosine_similarity(query_embedding, entry.embedding)
         if sim < threshold:
@@ -194,6 +197,19 @@ def hybrid_rank(
         eligible.append((sim, entry))
 
     if not eligible:
+        # A custom L2 store that does not return the embedding with each row would otherwise
+        # get an empty result set and no explanation, which is a miserable thing to debug.
+        # This function recomputes cosine locally, so the vector has to come back with the
+        # entry. A store that ranks server-side should call `fuse_channels` instead, the way
+        # QdrantStore does.
+        if missing_embeddings and missing_embeddings == len(entries):
+            raise EmbeddingError(
+                f"hybrid_rank received {missing_embeddings} candidate(s), none carrying an "
+                "embedding, so nothing could be ranked. An L2 store using hybrid_rank must "
+                "return each entry's embedding from search(). If your backend ranks "
+                "server-side and does not return vectors, use fuse_channels() with its own "
+                "scores instead (see QdrantStore)."
+            )
         return []
 
     dense_ranking = [e.id for _, e in sorted(eligible, key=lambda p: p[0], reverse=True)]
@@ -209,7 +225,7 @@ def hybrid_rank(
         rrf_k=rrf_k,
     )
     if fused_order is None:
-        # No lexical signal to fuse — identical to the pre-hybrid ranking.
+        # No lexical signal to fuse, identical to the pre-hybrid ranking.
         return _classic_blend(
             eligible,
             recency,

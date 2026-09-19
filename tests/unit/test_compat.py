@@ -1,7 +1,7 @@
 """Unit tests for the framework-compatibility drift gate (``scripts/check_compat.py``).
 
-Proves the gate (a) reports NO drift on the real repo files — so the SSOT, pyproject extras, and the
-README matrix genuinely agree today — and (b) actually CATCHES each drift class (wrong range,
+Proves the gate (a) reports NO drift on the real repo files, so the SSOT, pyproject extras, and the
+README matrix genuinely agree today, and (b) actually CATCHES each drift class (wrong range,
 missing README row, undocumented extra) against synthetic inputs. Framework-free, no network.
 """
 

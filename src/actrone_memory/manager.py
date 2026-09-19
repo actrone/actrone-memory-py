@@ -6,10 +6,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-import structlog
-
 from actrone_memory.config import MemoryConfig
-from actrone_memory.exceptions import ConfigurationError, TokenBudgetError, ValidationError
+from actrone_memory.exceptions import (
+    ConfigurationError,
+    StoreConnectionError,
+    TokenBudgetError,
+    ValidationError,
+)
 from actrone_memory.extraction import FactExtractor, OpenAIFactExtractor
 from actrone_memory.in_memory import InMemoryStore
 from actrone_memory.l2.embedder import (
@@ -19,9 +22,11 @@ from actrone_memory.l2.embedder import (
     OpenAIEmbedder,
     build_local_embedder,
 )
+from actrone_memory.logging import bind_logger
 from actrone_memory.metrics import (
     background_task_failed_total,
     background_task_in_flight,
+    retrieve_context_duration_seconds,
 )
 from actrone_memory.models import (
     MemoryEntry,
@@ -35,12 +40,12 @@ from actrone_memory.protocols import L1Store, L2Store
 from actrone_memory.rerank import CrossEncoderReranker, build_reranker
 
 if TYPE_CHECKING:
-    # `redis` / `qdrant-client` are OPTIONAL extras (H5) — only the durable `redis_qdrant` backend
+    # `redis` / `qdrant-client` are OPTIONAL extras: only the durable `redis_qdrant` backend
     # imports them, and it does so lazily inside `create()`. Keeping them out of module-load imports
     # means the local-first install (`pip install actrone-memory`) needs neither Redis nor Qdrant.
     from redis.asyncio import Redis
 
-log = structlog.get_logger(__name__)
+log = bind_logger(__name__)
 
 # Input length limits enforced at the public API boundary.
 _MAX_ID_LEN = 256
@@ -70,9 +75,15 @@ class MemoryManager:
 
     Usage::
 
-        async with MemoryManager.create() as mm:
-            await mm.store_turn(agent_id, session_id, user_msg, assistant_msg)
-            ctx = await mm.retrieve_context(agent_id, session_id, query, token_budget=4096)
+        mm = await MemoryManager.create()
+        await mm.store_turn(agent_id, session_id, user_msg, assistant_msg)
+        ctx = await mm.retrieve_context(agent_id, session_id, query, token_budget=4096)
+        await mm.close()
+
+    Or let ``create_memory_manager()`` close it for you::
+
+        async with create_memory_manager() as mm:
+            ...
     """
 
     def __init__(
@@ -177,18 +188,18 @@ class MemoryManager:
     ) -> RetrievedContext:
         """Fetch relevant context for the next LLM call using the 4-phase pipeline.
 
-        Phase 1 — Parallel fetch: Redis L1 (recent turns) + Qdrant L2 (semantic
+        Phase 1, Parallel fetch: Redis L1 (recent turns) + Qdrant L2 (semantic
         search) run concurrently to minimise latency (<50 ms P99).
 
-        Phase 2 — Budget allocation: the token budget is divided between system
+        Phase 2, Budget allocation: the token budget is divided between system
         prompt, episodic memory, session turns, and the current turn using the
         fractions in MemoryConfig.
 
-        Phase 3 — Relevance ranking: Qdrant results are filtered at the
+        Phase 3, Relevance ranking: Qdrant results are filtered at the
         configured threshold and re-ranked by
         ``0.7 × cosine_similarity + 0.3 × recency_score``.
 
-        Phase 4 — Priority pruning: if results exceed the allocated budget,
+        Phase 4, Priority pruning: if results exceed the allocated budget,
         oldest session turns are dropped first, then lowest-ranked memories.
         The system-prompt budget is never consumed by this method.
 
@@ -218,13 +229,13 @@ class MemoryManager:
 
         start = time.monotonic()
 
-        # Phase 1 — parallel fetch: embed the query and pull recent L1 turns concurrently.
+        # Phase 1, parallel fetch: embed the query and pull recent L1 turns concurrently.
         query_embedding, recent_turns = await asyncio.gather(
             self._embedder.embed(query),
             self._l1.get_recent_turns(agent_id, session_id),
         )
 
-        # Phase 3 — semantic search against L2 (requires the embedding from Phase 1).
+        # Phase 3, semantic search against L2 (requires the embedding from Phase 1).
         episodic_memories = await self._l2.search(
             agent_id=agent_id,
             query_embedding=query_embedding,
@@ -232,21 +243,23 @@ class MemoryManager:
             limit=self._cfg.max_episodic_memories,
             query_text=query if self._cfg.hybrid_retrieval else None,
         )
-        # Phase 3b — optional cross-encoder rerank over the top-K (precision lift; A4).
+        # Phase 3b, optional cross-encoder rerank over the top-K (precision lift; A4).
         episodic_memories = await self._maybe_rerank(query, episodic_memories)
 
-        # Phase 2 — budget allocation.
+        # Phase 2, budget allocation.
         episodic_budget = int(token_budget * self._cfg.budget_fraction_episodic)
         session_budget = int(token_budget * self._cfg.budget_fraction_session)
 
-        # Phase 4 — priority-weighted pruning. O(n) greedy passes.
+        # Phase 4, priority-weighted pruning. O(n) greedy passes.
         pruned_turns = self._prune_turns(recent_turns, session_budget)
         pruned_memories = self._prune_memories(episodic_memories, episodic_budget)
 
         total_tokens = sum(t.token_count for t in pruned_turns) + sum(
             m.token_count for m in pruned_memories
         )
-        elapsed_ms = (time.monotonic() - start) * 1000
+        elapsed_seconds = time.monotonic() - start
+        elapsed_ms = elapsed_seconds * 1000
+        retrieve_context_duration_seconds.observe(elapsed_seconds)
 
         log.info(
             "memory.context.retrieved",
@@ -280,7 +293,7 @@ class MemoryManager:
         """Write a fact directly into L2 long-term memory.
 
         Use this to seed an agent with background knowledge before a conversation
-        starts — e.g. user preferences, company policies, domain facts.
+        starts, e.g. user preferences, company policies, domain facts.
 
         Args:
             agent_id: The agent that should have access to this memory.
@@ -289,7 +302,7 @@ class MemoryManager:
                 more readily. Recommended ≥ 0.8 for facts you always want recalled.
             session_id: Label for where this memory came from. Defaults to ``"injected"``.
             topic_tags: Optional keywords describing the memory topic.
-            source: Provenance attribution — where this fact originated (e.g.
+            source: Provenance attribution, where this fact originated (e.g.
                 ``"injected"``, ``"import:crm"``, ``"tool:web_search"``).
             sensitivity: PII/sensitivity classification for governance and
                 right-to-erasure (``"none"`` | ``"low"`` | ``"pii"`` | ``"sensitive"``).
@@ -357,7 +370,7 @@ class MemoryManager:
         log.info("memory.deleted", agent_id=agent_id, memory_id=memory_id)
 
     async def erase_agent_memories(self, agent_id: str, session_id: str | None = None) -> None:
-        """Local right-to-erasure — irreversibly delete an agent's long-term memories.
+        """Local right-to-erasure, irreversibly delete an agent's long-term memories.
 
         This is the governance seed that graduates to hosted *provable* erasure: in
         the OSS library it performs a hard local delete. If ``session_id`` is given,
@@ -382,8 +395,8 @@ class MemoryManager:
     async def clear_session(self, agent_id: str, session_id: str) -> None:
         """Delete all Redis L1 turns for a session.
 
-        Long-term Qdrant memories (summaries, injected facts) are NOT deleted —
-        they persist across sessions by design.
+        Long-term Qdrant memories (summaries, injected facts) are NOT deleted, they persist
+        across sessions by design.
 
         Raises:
             ValidationError: If arguments are invalid.
@@ -424,7 +437,7 @@ class MemoryManager:
             raise ValidationError("limit", "must be ≥ 1")
 
         embedding = await self._embedder.embed(query)
-        # Over-fetch when reranking so the cross-encoder has a candidate pool to reorder (A4).
+        # Over-fetch when reranking so the cross-encoder has a candidate pool to reorder.
         fetch_limit = max(limit, self._cfg.rerank_top_k) if self._reranker else limit
         candidates = await self._l2.search(
             agent_id=agent_id,
@@ -439,7 +452,7 @@ class MemoryManager:
     async def _maybe_rerank(
         self, query: str, entries: list[MemoryEntry]
     ) -> list[MemoryEntry]:
-        """Apply the optional cross-encoder rerank over the top-K candidates (A4). No-op when the
+        """Apply the optional cross-encoder rerank over the top-K candidates. No-op when the
         reranker is disabled/unavailable, so callers always get a valid ordering."""
         if self._reranker is None or not entries:
             return entries
@@ -454,6 +467,25 @@ class MemoryManager:
         _validate_id(session_id, "session_id")
         return await self._l1.get_session_metadata(agent_id, session_id)
 
+    async def get_recent_turns(
+        self, agent_id: str, session_id: str, n: int | None = None
+    ) -> list[Turn]:
+        """Return recent session turns, oldest first, capped at ``n``.
+
+        The raw history read that framework memory adapters build on (for example a LangChain
+        ``BaseChatMessageHistory`` or a LlamaIndex memory), so they do not have to reach into
+        the L1 store directly. Defaults to everything L1 still retains.
+
+        Raises:
+            ValidationError: If arguments are invalid.
+            StoreConnectionError: If the underlying read fails after retries.
+        """
+        _validate_id(agent_id, "agent_id")
+        _validate_id(session_id, "session_id")
+        if n is not None and n < 1:
+            raise ValidationError("n", "must be ≥ 1")
+        return await self._l1.get_recent_turns(agent_id, session_id, n=n)
+
     async def extract_memories(
         self, agent_id: str, session_id: str, n: int | None = None
     ) -> list[str]:
@@ -461,7 +493,7 @@ class MemoryManager:
 
         Turns → atomic facts (``content_type="fact"``, ``source="extracted"``),
         each with an LLM-classified sensitivity. This is the "credible beyond turn
-        storage" capability; it is **LLM-gated** — a ``FactExtractor`` must be
+        storage" capability; it is **LLM-gated**, a ``FactExtractor`` must be
         configured (``MemoryConfig.extract_facts=True`` with the OpenAI provider),
         otherwise a ``ConfigurationError`` is raised.
 
@@ -548,7 +580,7 @@ class MemoryManager:
         """Trim a session-turn list to fit within ``budget`` tokens.
 
         Strategy: walk newest → oldest and admit each turn while it fits.
-        The first turn that overflows terminates the loop — older turns are
+        The first turn that overflows terminates the loop, older turns are
         guaranteed to drop because the next LLM call cares about *recent*
         context above all else.
 
@@ -585,9 +617,8 @@ class MemoryManager:
         Strategy: walk highest-ranked → lowest, skipping individual memories
         that would overflow but continuing to consider smaller ones. This
         differs from ``_prune_turns`` (which stops on the first overflow)
-        because the input here is pre-sorted by *relevance*, not recency —
-        skipping one oversized memory to admit several smaller, equally
-        relevant ones is the right trade-off.
+        because the input here is pre-sorted by *relevance*, not recency, skipping one
+        oversized memory to admit several smaller, equally relevant ones is the right trade-off.
 
         Invariants:
             * Returned list preserves the input's relative order.
@@ -615,7 +646,7 @@ class MemoryManager:
         return result
 
     async def _summarise_session(self, agent_id: str, session_id: str) -> None:
-        """Background task — compress recent turns into a Qdrant L2 summary.
+        """Background task, compress recent turns into a Qdrant L2 summary.
 
         Uses an LLM when the OpenAI provider is configured (produces a genuine
         abstractive summary). Falls back to extractive summarisation (first +
@@ -698,16 +729,46 @@ class MemoryManager:
     # ------------------------------------------------------------------
 
     @classmethod
-    async def create(cls, config: MemoryConfig | None = None) -> MemoryManager:
+    async def create(
+        cls,
+        config: MemoryConfig | None = None,
+        *,
+        l1: L1Store | None = None,
+        l2: L2Store | None = None,
+        embedder: Embedder | None = None,
+        extractor: FactExtractor | None = None,
+        reranker: CrossEncoderReranker | None = None,
+    ) -> MemoryManager:
         """Build a ready MemoryManager for the configured backend.
 
-        The default backend is ``"memory"`` — a zero-service, in-process store with
-        a dependency-free hashing embedder, so ``create()`` needs no Redis, no
-        Qdrant, and no API key (parity with the TypeScript on-ramp). Set
+        The default backend is ``"memory"``, a zero-service, in-process store, and
+        the default embedding provider is ``"local"``, which picks the best local
+        embedder available (in-process ONNX, then sentence-transformers, then a
+        dependency-free lexical hashing fallback). So ``create()`` needs no Redis,
+        no Qdrant, and no API key (parity with the TypeScript on-ramp). Pass
+        ``embedding_provider="hashing"`` to force the fallback and skip any model
+        download. Set
         ``backend="redis_qdrant"`` (env ``ACTRONE_BACKEND=redis_qdrant``) for the
         durable, horizontally-scalable production path.
 
         Reads configuration from environment variables when config is None.
+
+        Args:
+            config: Settings to use. Read from the environment when None.
+            l1: Custom hot-tier store satisfying the :class:`L1Store` protocol.
+            l2: Custom long-term store satisfying the :class:`L2Store` protocol.
+            embedder: Custom :class:`Embedder`, used instead of the configured provider.
+            extractor: Custom :class:`FactExtractor`, used instead of the OpenAI one the
+                config would build. Lets you extract facts without an OpenAI key.
+            reranker: Custom reranker, used instead of the one ``rerank_enabled`` builds.
+
+        Only Redis and Qdrant adapters ship with this package. ``l1`` / ``l2`` are the
+        supported way to run any other engine (pgvector, Weaviate, Valkey, and so on)
+        without constructing the manager by hand: anything satisfying the protocol
+        works. Whatever you inject is used as-is, and the corresponding backend is not
+        built or connected, so injecting both stores never opens a Redis or Qdrant
+        connection. You own the lifecycle of an injected store; ``close()`` still calls
+        its ``close()``.
 
         Raises:
             ConfigurationError: If required settings are missing or invalid.
@@ -718,8 +779,22 @@ class MemoryManager:
         cfg.validate_runtime()
 
         raw_embedder, summariser = cls._build_embedder(cfg)
-        extractor = cls._build_extractor(cfg)
-        reranker = build_reranker(enabled=cfg.rerank_enabled, model_name=cfg.rerank_model)
+        # An injected collaborator wins over the one the config would construct, so a
+        # caller can supply a deterministic extractor (or one that needs no OpenAI key)
+        # without dropping to the constructor the docs tell you not to call.
+        resolved_extractor = extractor if extractor is not None else cls._build_extractor(cfg)
+        resolved_reranker = (
+            reranker
+            if reranker is not None
+            else build_reranker(enabled=cfg.rerank_enabled, model_name=cfg.rerank_model)
+        )
+        if embedder is not None:
+            raw_embedder = embedder
+
+        if l1 is not None and l2 is not None:
+            # Fully injected: build no backend at all, so no connection is opened.
+            log.info("memory.backend.injected", embedding_provider=cfg.embedding_provider)
+            return cls(l1, l2, raw_embedder, cfg, summariser, resolved_extractor, resolved_reranker)
 
         if cfg.backend == "memory":
             # Zero-service local-first path. The hashing embedder is deterministic,
@@ -731,14 +806,23 @@ class MemoryManager:
                 recency_weight=cfg.recency_weight,
             )
             log.info("memory.backend.local", embedding_provider=cfg.embedding_provider)
-            return cls(store, store, raw_embedder, cfg, summariser, extractor, reranker)
+            return cls(
+                l1 or store,
+                l2 or store,
+                raw_embedder,
+                cfg,
+                summariser,
+                resolved_extractor,
+                resolved_reranker,
+            )
 
         # ── Durable production backend: Redis L1 + Qdrant L2 ──────────────
-        # `redis` + `qdrant-client` are optional extras (H5) — imported lazily here so the
+        # `redis` + `qdrant-client` are optional extras, imported lazily here so the
         # local-first install never pulls them. A clear message points at the extra when missing.
         try:
             from redis.asyncio import Redis
             from redis.asyncio.connection import ConnectionPool
+            from redis.exceptions import RedisError
 
             from actrone_memory.l1.redis_store import RedisStore
             from actrone_memory.l2.qdrant_store import QdrantStore
@@ -748,7 +832,9 @@ class MemoryManager:
                 "pip install actrone-memory[redis,qdrant]  (or [production])"
             ) from exc
 
-        # Shared Redis client for both the session store and the embedding cache.
+        # One pool serves both the session store and the embedding cache. Building a
+        # second pool here would double the connection count against the same server
+        # and leave the cache's connections unowned by close().
         pool = ConnectionPool.from_url(
             cfg.redis_url,
             decode_responses=False,
@@ -758,31 +844,51 @@ class MemoryManager:
         )
         redis_client: Redis = Redis(connection_pool=pool)
 
-        embedder = CachedEmbedder(
+        # Fail fast on an unreachable Redis rather than surfacing it on first write,
+        # releasing the pool we just opened so a failed create() leaks nothing.
+        try:
+            await redis_client.ping()
+        except RedisError as exc:
+            await redis_client.aclose()
+            raise StoreConnectionError("Redis", exc) from exc
+
+        cached_embedder = CachedEmbedder(
             raw_embedder, redis_client, ttl_seconds=cfg.embedding_cache_ttl_seconds
         )
 
-        l1 = await RedisStore.from_url(
-            cfg.redis_url,
-            cfg.session_ttl_hours,
-            cfg.max_session_turns,
-            max_connections=cfg.redis_max_connections,
-            socket_timeout=cfg.redis_socket_timeout,
-            socket_connect_timeout=cfg.redis_socket_connect_timeout,
+        resolved_l1: L1Store = l1 if l1 is not None else RedisStore(
+            redis_client, cfg.session_ttl_hours, cfg.max_session_turns
         )
-        l2 = await QdrantStore.from_url(
-            cfg.qdrant_url,
-            api_key=cfg.qdrant_api_key.get_secret_value() if cfg.qdrant_api_key else None,
-            collection=cfg.qdrant_collection,
-            # Size the collection to the embedder actually in use, not a fixed
-            # constant — the hashing/local embedders have their own dimensions.
-            dimensions=raw_embedder.dimensions,
-            relevance_weight=cfg.relevance_weight,
-            recency_weight=cfg.recency_weight,
-            timeout=cfg.qdrant_timeout,
-        )
+        try:
+            resolved_l2: L2Store = (
+                l2
+                if l2 is not None
+                else await QdrantStore.from_url(
+                    cfg.qdrant_url,
+                    api_key=cfg.qdrant_api_key.get_secret_value() if cfg.qdrant_api_key else None,
+                    collection=cfg.qdrant_collection,
+                    # Size the collection to the embedder actually in use, not a fixed
+                    # constant, the hashing/local embedders have their own dimensions.
+                    dimensions=raw_embedder.dimensions,
+                    relevance_weight=cfg.relevance_weight,
+                    recency_weight=cfg.recency_weight,
+                    timeout=cfg.qdrant_timeout,
+                )
+            )
+        except BaseException:
+            # A half-built manager has no close(), so release Redis before propagating.
+            await redis_client.aclose()
+            raise
 
-        return cls(l1, l2, embedder, cfg, summariser, extractor, reranker)
+        return cls(
+            resolved_l1,
+            resolved_l2,
+            cached_embedder,
+            cfg,
+            summariser,
+            resolved_extractor,
+            resolved_reranker,
+        )
 
     @staticmethod
     def _build_extractor(cfg: MemoryConfig) -> FactExtractor | None:
@@ -790,7 +896,7 @@ class MemoryManager:
 
         Extraction requires an OpenAI key (the only LLM provider wired in OSS), so
         it is silently skipped for the hashing/local embedding providers even if
-        ``extract_facts`` is set — extraction is best-effort enrichment.
+        ``extract_facts`` is set, extraction is best-effort enrichment.
         """
         if not cfg.extract_facts or cfg.embedding_provider != "openai":
             return None
@@ -818,7 +924,7 @@ class MemoryManager:
         if cfg.embedding_provider == "local":
             # Graceful local chain (default): in-process ONNX → sentence-transformers → hashing.
             return build_local_embedder(hashing_dimensions=cfg.hashing_dimensions), None
-        # "hashing" — the dependency-free, deterministic, fully-offline lexical embedder (explicit).
+        # "hashing", the dependency-free, deterministic, fully-offline lexical embedder (explicit).
         return HashingEmbedder(dimensions=cfg.hashing_dimensions), None
 
     async def close(self) -> None:
@@ -862,7 +968,7 @@ class MemoryManager:
 
 
 class _Summariser:
-    """Internal protocol — summarise a block of conversation text into a concise paragraph."""
+    """Internal protocol, summarise a block of conversation text into a concise paragraph."""
 
     async def summarise(self, text: str) -> str:
         raise NotImplementedError

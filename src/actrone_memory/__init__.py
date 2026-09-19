@@ -1,7 +1,9 @@
-"""actrone-memory — Two-tier persistent memory for AI agents.
+"""actrone-memory, Two-tier persistent memory for AI agents.
 
 Local-first by default: ``MemoryManager.create()`` runs with zero external
-services (in-memory store + a dependency-free hashing embedder, no API key).
+services and no API key (in-process store, plus the best local embedder
+available: in-process ONNX if the ``onnx`` extra is installed, then
+sentence-transformers, then a dependency-free lexical hashing fallback).
 Set ``backend="redis_qdrant"`` and an embedding provider for the durable path.
 """
 

@@ -1,24 +1,26 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-import structlog
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
 
 from actrone_memory.exceptions import EmbeddingError
+from actrone_memory.logging import bind_logger
+from actrone_memory.metrics import embedding_cache_hits_total, embedding_cache_misses_total
 
 if TYPE_CHECKING:
-    # `redis` is an OPTIONAL extra (H5) — only the CachedEmbedder (redis_qdrant backend) uses it,
+    # `redis` is an OPTIONAL extra: only the CachedEmbedder (redis_qdrant backend) uses it,
     # and then only as a constructor type hint. Keeping it out of runtime imports means the
     # local-first install (`pip install actrone-memory`) pulls no redis.
     from redis.asyncio import Redis
 
-log = structlog.get_logger(__name__)
+log = bind_logger(__name__)
 
 _CACHE_PREFIX = "embed:"
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -103,32 +105,43 @@ class CachedEmbedder(Embedder):
         return f"{_CACHE_PREFIX}{digest}"
 
     async def embed(self, text: str) -> list[float]:
-        import json
-
         key = self._cache_key(text)
         cached = await self._cache.get(key)
         if cached:
+            embedding_cache_hits_total.inc()
             return json.loads(cached)  # type: ignore[no-any-return]
 
+        embedding_cache_misses_total.inc()
         vector = await self._inner.embed(text)
         await self._cache.set(key, json.dumps(vector), ex=self._ttl)
         return vector
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Batch embed with per-item cache lookup. O(n) cache checks, one API call for misses."""
-        import json
+        """Batch embed against the cache: one MGET for lookups, one pipeline for writes.
+
+        Reading each key with its own round trip made a batch of n texts cost n
+        sequential round trips, which dominates the call once n grows. MGET collapses
+        that into one, and the misses are written back in a single pipeline.
+        """
+        if not texts:
+            return []
 
         results: list[list[float] | None] = [None] * len(texts)
         miss_indices: list[int] = []
         miss_texts: list[str] = []
 
-        for i, text in enumerate(texts):
-            cached = await self._cache.get(self._cache_key(text))
+        # One round trip for every lookup. Duplicate texts share a key, which MGET
+        # returns once per requested position, so the mapping stays positional.
+        cached_values = await self._cache.mget([self._cache_key(t) for t in texts])
+        for i, (text, cached) in enumerate(zip(texts, cached_values, strict=True)):
             if cached:
                 results[i] = json.loads(cached)
             else:
                 miss_indices.append(i)
                 miss_texts.append(text)
+
+        embedding_cache_hits_total.inc(len(texts) - len(miss_texts))
+        embedding_cache_misses_total.inc(len(miss_texts))
 
         if miss_texts:
             vectors = await self._inner.embed_batch(miss_texts)
@@ -138,12 +151,14 @@ class CachedEmbedder(Embedder):
                     f"Embedder returned {len(vectors)} vectors for {len(miss_texts)} texts."
                 )
 
+            pipe = self._cache.pipeline()
             for idx, text, vector in zip(miss_indices, miss_texts, vectors, strict=True):
                 results[idx] = vector
-                await self._cache.set(self._cache_key(text), json.dumps(vector), ex=self._ttl)
+                pipe.set(self._cache_key(text), json.dumps(vector), ex=self._ttl)
+            await pipe.execute()
 
         # Contract: returned list is always the same length as `texts`.
-        # Any None slot indicates a corrupt cache entry or inner-embedder bug — fail loudly.
+        # Any None slot indicates a corrupt cache entry or inner-embedder bug, fail loudly.
         for i, slot in enumerate(results):
             if slot is None:
                 raise EmbeddingError(
@@ -214,7 +229,7 @@ class HashingEmbedder(Embedder):
 
     Hashes words into a fixed-dimension bag-of-words vector and L2-normalises it,
     so cosine similarity reflects word overlap. This is the **zero-dependency,
-    zero-API-key default** — parity with the TypeScript ``LocalEmbedder`` — which
+    zero-API-key default**, parity with the TypeScript ``LocalEmbedder``, which
     makes the whole library run fully offline with no model download and no
     external service. It is not semantically rich (no synonymy); for production
     recall quality pass an :class:`OpenAIEmbedder` or the sentence-transformers
@@ -252,11 +267,11 @@ class HashingEmbedder(Embedder):
 
 
 class FastEmbedEmbedder(Embedder):
-    """In-process ONNX dense embedder via ``fastembed`` (onnxruntime — no torch, no GPU).
+    """In-process ONNX dense embedder via ``fastembed`` (onnxruntime, no torch, no GPU).
 
     The default "real" dense tier: local-first, zero-egress after a one-time model download,
     no API key. The default model ``BAAI/bge-small-en-v1.5`` (384-dim) is small (~130 MB ONNX),
-    lazily downloaded + cached on first construction, and **offline thereafter** — so the
+    lazily downloaded + cached on first construction, and **offline thereafter**, so the
     library's "no-egress" promise holds for every call after the initial fetch.
 
     Requires: ``pip install actrone-memory[onnx]``. CPU-bound encoding is offloaded to a thread
@@ -283,7 +298,7 @@ class FastEmbedEmbedder(Embedder):
         """Resolve the model's vector width from fastembed's catalogue, probing as a fallback."""
         try:
             catalogue = list(text_embedding_cls.list_supported_models())
-        except Exception:  # catalogue availability/shape varies by version — probe instead.
+        except Exception:  # catalogue availability/shape varies by version, probe instead.
             catalogue = []
         for desc in catalogue:
             dim = desc.get("dim") if isinstance(desc, dict) else None
@@ -348,7 +363,7 @@ class LocalEmbedder(Embedder):
         from functools import partial
 
         # functools.partial keeps the bound encode() call typed by the
-        # SentenceTransformer stubs — a plain lambda would erase the return
+        # SentenceTransformer stubs, a plain lambda would erase the return
         # type to Any and fail mypy --strict downstream.
         loop = asyncio.get_running_loop()
         encode = partial(self._model.encode, texts, convert_to_numpy=True)
@@ -361,17 +376,17 @@ def build_local_embedder(
 ) -> Embedder:
     """Return the best available **local, offline, zero-egress** embedder, degrading gracefully.
 
-    Tier order — the graceful chain behind ``embedding_provider="local"`` (the default):
+    Tier order, the graceful chain behind ``embedding_provider="local"`` (the default):
 
-    1. **In-process ONNX** (:class:`FastEmbedEmbedder`, ``[onnx]`` extra) — dense, no torch. The
+    1. **In-process ONNX** (:class:`FastEmbedEmbedder`, ``[onnx]`` extra), dense, no torch. The
        preferred "real" recall tier.
-    2. **sentence-transformers** (:class:`LocalEmbedder`, ``[local]`` extra) — dense, torch-backed.
-    3. **Hashing** (:class:`HashingEmbedder`) — dependency-free lexical fallback that always works.
+    2. **sentence-transformers** (:class:`LocalEmbedder`, ``[local]`` extra), dense, torch-backed.
+    3. **Hashing** (:class:`HashingEmbedder`), dependency-free lexical fallback that always works.
 
     Each tier is tried in turn; an ``ImportError`` (library absent) *or* a runtime model-fetch
     failure (air-gapped first run) falls through to the next. This guarantees a working embedder
-    with **no API key and no unavoidable network call** — the model download is one-time and the
-    hashing tier needs none — so the "local-first / no-egress" promise always holds.
+    with **no API key and no unavoidable network call**, the model download is one-time and the
+    hashing tier needs none, so the "local-first / no-egress" promise always holds.
     """
     try:
         onnx = FastEmbedEmbedder(model_name) if model_name else FastEmbedEmbedder()

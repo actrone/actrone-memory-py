@@ -7,7 +7,7 @@ from actrone_memory.models import ContentType, MemoryEntry, SessionMetadata, Tur
 
 @runtime_checkable
 class L1Store(Protocol):
-    """Hot session tier — recent conversation turns.
+    """Hot session tier, recent conversation turns.
 
     Both the Redis-backed :class:`~actrone_memory.l1.redis_store.RedisStore` and
     the dependency-free :class:`~actrone_memory.in_memory.InMemoryStore`
@@ -38,7 +38,7 @@ class L1Store(Protocol):
 
 @runtime_checkable
 class L2Store(Protocol):
-    """Cold semantic tier — long-term episodic memories.
+    """Cold semantic tier, long-term episodic memories.
 
     Implemented by :class:`~actrone_memory.l2.qdrant_store.QdrantStore` and the
     dependency-free :class:`~actrone_memory.in_memory.InMemoryStore`.

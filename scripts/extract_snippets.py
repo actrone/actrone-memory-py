@@ -1,15 +1,15 @@
 #!/usr/bin/env python
-"""extract-snippets — pull the ``# region``-marked blocks out of the type-checked example files into
-``examples/snippets.json`` (Public-Domain Cutover Runbook Phase 6, item 5).
+"""extract-snippets, pull the ``# region``-marked blocks out of the type-checked example files into
+``examples/snippets.json``.
 
 The docs render these by id instead of hand-typing code, so every documented snippet is real,
-mypy-checked code from the current library — an example that stops type-checking fails CI before it
+mypy-checked code from the current library, an example that stops type-checking fails CI before it
 can be published stale.
 
 Markers::
 
     # region <id>
-    ...code...
+...code...
     # endregion <id>
 
 ``--check`` verifies ``snippets.json`` is in sync with the sources (CI gate) instead of writing it.
@@ -31,7 +31,7 @@ REGION = re.compile(r"#\s*region\s+(\S+)\s*\n(.*?)\n\s*#\s*endregion", re.DOTALL
 def extract() -> dict[str, str]:
     snippets: dict[str, str] = {}
     # Top-level examples + the per-framework recipe sources under examples/frameworks/ (mirrors the
-    # TS examples/frameworks/ pattern) — each # region block becomes a doc snippet.
+    # TS examples/frameworks/ pattern), each # region block becomes a doc snippet.
     sources = sorted(EXAMPLES_DIR.glob("*.py")) + sorted((EXAMPLES_DIR / "frameworks").glob("*.py"))
     for path in sources:
         for match in REGION.finditer(path.read_text(encoding="utf-8")):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from actrone_memory.exceptions import ConfigurationError
@@ -17,15 +17,15 @@ class MemoryConfig(BaseSettings):
     Required only when ``embedding_provider="openai"``:
         ACTRONE_OPENAI_API_KEY
 
-    All other settings have sensible defaults. The default provider is ``"local"`` — a
+    All other settings have sensible defaults. The default provider is ``"local"``, a
     local-first, zero-egress dense embedder that needs no API key (see below).
     """
 
     model_config = SettingsConfigDict(env_prefix="ACTRONE_", env_file=".env", extra="ignore")
 
     # ── Backend ──────────────────────────────────────────────────────────
-    # "memory" (default) is the zero-service, in-process local-first backend —
-    # no Redis, no Qdrant, no API key — parity with the TypeScript on-ramp.
+    # "memory" (default) is the zero-service, in-process local-first backend:
+    # no Redis, no Qdrant, no API key, parity with the TypeScript on-ramp.
     # "redis_qdrant" is the durable, horizontally-scalable production backend.
     backend: Literal["memory", "redis_qdrant"] = "memory"
 
@@ -45,7 +45,7 @@ class MemoryConfig(BaseSettings):
 
     # ── Embedding ────────────────────────────────────────────────────────
     # "local" (default): best available local, offline, zero-egress dense embedder, degrading
-    #   gracefully — in-process ONNX (fastembed, [onnx] extra) → sentence-transformers ([local]
+    #   gracefully, in-process ONNX (fastembed, [onnx] extra) → sentence-transformers ([local]
     #   extra) → dependency-free lexical hashing. No API key; one-time model download, then offline.
     # "openai": text-embedding-3-small (needs ACTRONE_OPENAI_API_KEY).
     # "hashing": force the dependency-free, deterministic, fully-offline lexical embedder.
@@ -72,14 +72,14 @@ class MemoryConfig(BaseSettings):
     relevance_threshold: float = 0.72
     relevance_weight: float = 0.7  # recency_weight = 1 - relevance_weight
     recency_weight: float = 0.3
-    # Hybrid retrieval (Axis A3): among the threshold-admitted candidates, fuse the embedding
+    # Hybrid retrieval: among the threshold-admitted candidates, fuse the embedding
     # (dense) ranking with a BM25 (lexical) ranking and recency via Reciprocal Rank Fusion, so an
     # exact-keyword match the embedder under-ranks still surfaces. Admission (cosine ≥ threshold) is
     # unchanged. Set False to force the classic single-channel dense+recency blend.
     hybrid_retrieval: bool = True
 
-    # Cross-encoder reranking (Axis A4, opt-in). A cross-encoder rescores (query, memory) pairs
-    # jointly — more precise than the embedder, but O(K) inferences, so it only reorders the top
+    # Cross-encoder reranking (opt-in). A cross-encoder rescores (query, memory) pairs
+    # jointly, more precise than the embedder, but O(K) inferences, so it only reorders the top
     # ``rerank_top_k`` of an over-fetched set. Needs the [onnx] extra; degrades to the un-reranked
     # order if unavailable. Off by default (adds a model download + per-query latency).
     rerank_enabled: bool = False
@@ -112,8 +112,8 @@ class MemoryConfig(BaseSettings):
 
     # ── Graceful shutdown ─────────────────────────────────────────────────
     # Maximum time MemoryManager.close() waits for in-flight background
-    # tasks to drain before cancelling them. CLAUDE.md §6.1 mandates a
-    # configurable grace period; 30 s matches the workspace default.
+    # tasks to drain before cancelling them. A configurable grace period
+    # keeps shutdown bounded; 30 s is a sane default for most deployments.
     shutdown_grace_seconds: float = 30.0
 
     # ── Token budget fractions (must sum to 1.0) ─────────────────────────
@@ -121,11 +121,6 @@ class MemoryConfig(BaseSettings):
     budget_fraction_episodic: float = 0.25
     budget_fraction_session: float = 0.35
     budget_fraction_current_turn: float = 0.10
-
-    @field_validator("embedding_provider")
-    @classmethod
-    def _validate_provider(cls, v: str) -> str:
-        return v  # cross-field validation done in validate_runtime()
 
     def validate_runtime(self) -> None:
         """Validate settings that require cross-field checks.
@@ -162,3 +157,23 @@ class MemoryConfig(BaseSettings):
                 "redis_max_connections must be ≥ 1.",
                 details={"redis_max_connections": self.redis_max_connections},
             )
+
+        # The ranking blend is relevance_weight × cosine + recency_weight × recency.
+        # Weights that do not sum to 1.0 silently rescale every score, which shifts
+        # the ordering against the documented formula instead of failing.
+        rank_total = self.relevance_weight + self.recency_weight
+        if abs(rank_total - 1.0) > 1e-6:
+            raise ConfigurationError(
+                f"relevance_weight + recency_weight must sum to 1.0, got {rank_total:.4f}.",
+                details={
+                    "relevance_weight": self.relevance_weight,
+                    "recency_weight": self.recency_weight,
+                },
+            )
+
+        for name in ("max_session_turns", "max_episodic_memories", "rerank_top_k"):
+            value = getattr(self, name)
+            if value < 1:
+                raise ConfigurationError(
+                    f"{name} must be ≥ 1, got {value}.", details={name: value}
+                )

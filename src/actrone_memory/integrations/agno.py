@@ -5,7 +5,7 @@ governed Actrone memory as an ``additional_context`` string to hand the agent fo
 persists the completed turn. Agno's own memory/db is a storage subsystem rather than a simple
 injectable interface, so the ``additional_context`` path is the idiomatic Tier-1 integration.
 
-Framework-free: nothing from ``agno`` is imported — this runs against a local, service-free
+Framework-free: nothing from ``agno`` is imported, this runs against a local, service-free
 MemoryManager.
 """
 

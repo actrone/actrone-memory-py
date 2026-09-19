@@ -64,7 +64,7 @@ def test_cosine_zero_vector_is_zero():
 
 
 def test_cosine_tolerates_length_mismatch():
-    # Compares the shared prefix — must not raise.
+    # Compares the shared prefix, must not raise.
     assert cosine_similarity([1.0, 0.0, 5.0], [1.0, 0.0]) == pytest.approx(1.0)
 
 

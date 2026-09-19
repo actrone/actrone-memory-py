@@ -14,20 +14,20 @@ jobs:
     name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
       - run: uv pip install --system ruff mypy pydantic pydantic-settings structlog tenacity openai
-      - name: Ruff — style and import checks
+      - name: Ruff, style and import checks
         run: ruff check src/ tests/
-      - name: mypy — strict type checking
+      - name: mypy, strict type checking
         run: mypy src/actrone_memory --strict
-      - name: bandit — static security analysis
+      - name: bandit, static security analysis
         run: |
           uv pip install --system bandit
           bandit -r src/ -ll
-      - name: check-compat — framework version drift gate
+      - name: check-compat, framework version drift gate
         # Fails if pyproject extras / README drift from compatibility.yaml (the SSOT). The full
         # per-version interface-canary matrix runs in compat-matrix.yml (scheduled).
         run: |
@@ -38,8 +38,8 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
       - run: uv pip install --system -e ".[dev]"
@@ -56,7 +56,7 @@ jobs:
         run: mypy examples/quickstart.py --strict --explicit-package-bases
       - name: Verify extracted snippets are in sync
         run: python scripts/extract_snippets.py --check
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0
         with:
           files: coverage.xml
 
@@ -81,8 +81,8 @@ jobs:
           --health-timeout 3s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
       - run: uv pip install --system -e ".[dev]"
@@ -90,7 +90,7 @@ jobs:
         run: |
           python -m pytest tests/integration/ \
             -v \
-            --timeout=60
+            --timeout=120
         env:
           ACTRONE_REDIS_URL: redis://localhost:6379
           ACTRONE_QDRANT_URL: http://localhost:6333
@@ -99,20 +99,31 @@ jobs:
     name: Dependency Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
       - run: uv pip install --system pip-audit
-      - name: Audit dependencies for known vulnerabilities
+      - name: Audit base dependencies for known vulnerabilities
         run: pip-audit --requirement <(uv pip compile pyproject.toml) --strict
+
+      # The base set is only what `pip install actrone-memory` pulls. Anyone running the
+      # durable backend also installs redis + qdrant-client + openai, so audit that
+      # resolution too, otherwise a CVE in a shipped backend dependency passes CI unseen.
+      # The framework extras (langchain, crewai, torch, ...) are deliberately excluded:
+      # they are user-chosen, resolve slowly, and are not part of this library's own path.
+      - name: Audit production-extra dependencies (redis, qdrant, openai)
+        run: |
+          pip-audit --strict --requirement <(
+            uv pip compile --extra redis --extra qdrant --extra openai pyproject.toml
+          )
 
   docs:
     name: API Reference (Sphinx)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
       # Adapters lazily import their frameworks (try/except ImportError), so autodoc needs only the
@@ -124,16 +135,43 @@ jobs:
           sphinx-build -b html docs docs/_build/html
 
   build:
-    name: Docker Build
+    name: Docker Build & Image Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build and run test stage
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           target: test
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The test stage is not the artefact anyone runs. Build the distroless runtime
+      # stage too, so a broken final stage cannot pass CI unnoticed, and load it into
+      # the local daemon so the scanner below has something to look at.
+      - name: Build runtime stage
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        with:
+          context: .
+          target: runtime
+          push: false
+          load: true
+          tags: actrone-memory:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Dependency scanning (the `security` job) only covers Python packages. The image
+      # also carries an OS layer, so scan the built artefact itself and block on
+      # HIGH/CRITICAL. `exit-code: 1` is what makes this a gate rather than a report.
+      - name: Scan runtime image for OS + library vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: actrone-memory:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          vuln-type: os,library

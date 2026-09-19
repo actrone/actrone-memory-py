@@ -1,6 +1,6 @@
 """Contract test for the OpenAI Agents SDK memory adapter (Tier 1).
 
-Framework-free — the adapter imports nothing from ``openai-agents``, so this runs against a
+Framework-free, the adapter imports nothing from ``openai-agents``, so this runs against a
 real local (hashing + in-memory) MemoryManager with no services and no API key.
 """
 

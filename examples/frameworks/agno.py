@@ -1,4 +1,4 @@
-"""Agno — mypy-checked example source for the docs."""
+"""Agno, mypy-checked example source for the docs."""
 # region agno
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.agno import ActroneAgnoMemory

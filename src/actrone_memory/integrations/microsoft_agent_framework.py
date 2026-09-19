@@ -5,9 +5,9 @@ Microsoft Agent Framework (the Semantic Kernel + AutoGen successor) injects memo
 to fetch context (returned as a ``Context`` with ``instructions``), and after the response calls
 ``invoked(...)`` to persist the exchange. This adapter offers:
 
-- **Tier 1** — :meth:`ActroneAgentFrameworkMemory.build_context`: the governed memory as a
+- **Tier 1**, :meth:`ActroneAgentFrameworkMemory.build_context`: the governed memory as a
   string (inherited from the shared base).
-- **Tier 2** — :meth:`ActroneAgentFrameworkMemory.as_context_provider`: a real
+- **Tier 2**, :meth:`ActroneAgentFrameworkMemory.as_context_provider`: a real
   ``ContextProvider`` backed by the Actrone store, ready to pass as ``ChatAgent(...,
   context_providers=[…])``. ``agent-framework`` is imported lazily inside that method only.
 """
@@ -22,7 +22,7 @@ from actrone_memory.integrations._context import BaseActroneMemory
 class ActroneAgentFrameworkMemory(BaseActroneMemory):
     """Governed memory for a Microsoft Agent Framework ``ChatAgent``.
 
-    Usage (Tier 2 — native ``ContextProvider``)::
+    Usage (Tier 2, native ``ContextProvider``)::
 
         from agent_framework import ChatAgent
         from actrone_memory.integrations.microsoft_agent_framework import (

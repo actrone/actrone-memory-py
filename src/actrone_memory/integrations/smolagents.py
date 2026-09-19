@@ -5,7 +5,7 @@ governed Actrone memory as a context block to prepend to the task (or add via `a
 a run, and persists the completed turn. smolagents keeps its own step memory rather than exposing a
 simple injectable memory interface, so the task-context path is the idiomatic Tier-1 integration.
 
-Framework-free: nothing from ``smolagents`` is imported — this runs against a local, service-free
+Framework-free: nothing from ``smolagents`` is imported, this runs against a local, service-free
 MemoryManager.
 """
 

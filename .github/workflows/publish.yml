@@ -11,27 +11,62 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write  # trusted publishing — no API token needed
+      id-token: write  # trusted publishing, no API token needed
       contents: write  # create the GitHub Release for this tag
+      actions: read    # read the CI run's conclusion for this commit
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
+
+      # The steps below re-run a fast subset of the checks, but they cannot re-run the
+      # integration tests (Redis + Qdrant services), the image scan, CodeQL or the
+      # dependency audit. Without this gate, tagging a commit whose CI went red still
+      # publishes. Require the CI run for this exact commit to have concluded green.
+      - name: Require CI to have passed for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CONCLUSION=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&per_page=1" \
+            --jq '.workflow_runs[0].conclusion // "missing"')
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::CI for ${GITHUB_SHA} is '${CONCLUSION}', refusing to publish. Tag a commit whose CI passed on main."
+            exit 1
+          fi
+          echo "CI passed for ${GITHUB_SHA}."
+
+      - name: Verify tag matches pyproject.toml version
+        # A tag pushed without bumping pyproject.toml would otherwise build and (attempt to)
+        # publish the wrong version silently. Fail fast before any build/publish work happens.
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${PKG_VERSION}"
+            exit 1
+          fi
       - name: Run CI checks before publish
         run: |
           uv pip install --system -e ".[dev]"
           python -m pytest tests/unit/ --cov-fail-under=80 -q
+          ruff check src/ tests/
+          mypy src/actrone_memory --strict
       - name: Build distribution
         run: uv build
+      - name: Validate build artifacts
+        run: |
+          uv pip install --system twine
+          twine check dist/*
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
       - name: Create GitHub Release
         # Publishing to PyPI on a tag push was previously the only artifact of a release: no
         # GitHub Release object, so the repo's Releases tab stayed empty and there was nowhere to
         # read what changed between versions without diffing CHANGELOG.md by hand. Auto-generated
         # notes (from merged PRs since the previous tag) need no extra maintenance.
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           name: ${{ github.ref_name }}
           generate_release_notes: true

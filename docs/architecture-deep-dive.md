@@ -1,20 +1,20 @@
 # Architecture Deep Dive
 
 > This document explains how `actrone-memory` works under the hood.
-> No prior knowledge assumed — if you know what an API is, you'll follow along.
+> No prior knowledge assumed, if you know what an API is, you'll follow along.
 
 ---
 
 ## The Core Problem: AI Agents Have No Memory
 
-When you talk to an AI, everything you say is sent to the language model as a single block of text called the **context window**. Think of it as a piece of paper — the AI can only see what's written on that one page.
+When you talk to an AI, everything you say is sent to the language model as a single block of text called the **context window**. Think of it as a piece of paper, the AI can only see what's written on that one page.
 
 Two problems come from this:
 
-1. **The page has a size limit.** Most models cap out at 8,000 to 128,000 tokens (roughly 6,000–100,000 words). In a long conversation, old messages fall off the page.
+1. **The page has a size limit.** Most models cap out at 8,000 to 128,000 tokens (roughly 6,000-100,000 words). In a long conversation, old messages fall off the page.
 2. **The page is thrown away after every session.** Start a new conversation and the AI has no idea who you are.
 
-`actrone-memory` fixes both problems by giving agents two types of memory — one for what just happened, one for everything ever said.
+`actrone-memory` fixes both problems by giving agents two types of memory, one for what just happened, one for everything ever said.
 
 ---
 
@@ -44,7 +44,7 @@ Inspired by how computers use RAM and a hard drive, we use two different storage
 
 You could store everything in one place, but no single system is perfect for both jobs:
 
-- **Redis** is extremely fast but stores data in raw text and doesn't understand meaning. You can't ask it "find everything we talked about related to trading" — you'd have to search message by message.
+- **Redis** is extremely fast but stores data in raw text and doesn't understand meaning. You can't ask it "find everything we talked about related to trading", you'd have to search message by message.
 - **Qdrant** understands meaning through something called **vector embeddings** (explained below), but it's slower and is designed for search, not for storing ordered lists of recent messages.
 
 Using both gives you speed *and* intelligence.
@@ -68,7 +68,7 @@ When a new message comes in, we convert it into a list of numbers (called an **e
 Stored in Qdrant alongside the original text
 ```
 
-Later, when the user asks "What are the risks of algorithmic trading?", we embed *that* question and find the stored memories whose number patterns are closest — even though the exact words were different. This is called **cosine similarity**.
+Later, when the user asks "What are the risks of algorithmic trading?", we embed *that* question and find the stored memories whose number patterns are closest, even though the exact words were different. This is called **cosine similarity**.
 
 ```text
 Query:   "What are the risks of algorithmic trading?"
@@ -77,7 +77,7 @@ Query:   "What are the risks of algorithmic trading?"
 Memory:  "I'm building a stock trading bot"
          [0.021, -0.418, 0.093, 0.671, ...]
 
-Similarity score: 0.94  ✓  (above 0.72 threshold — included)
+Similarity score: 0.94  ✓  (above 0.72 threshold, included)
 
 
 Query:   "What are the risks of algorithmic trading?"
@@ -86,10 +86,10 @@ Query:   "What are the risks of algorithmic trading?"
 Memory:  "My cat's name is Whiskers"
          [-0.312, 0.891, -0.445, 0.123, ...]
 
-Similarity score: 0.11  ✗  (below threshold — excluded)
+Similarity score: 0.11  ✗  (below threshold, excluded)
 ```
 
-The **threshold** (default 0.72) is a quality gate — only memories that are genuinely relevant to the current question get included.
+The **threshold** (default 0.72) is a quality gate, only memories that are genuinely relevant to the current question get included.
 
 ---
 
@@ -145,14 +145,14 @@ You call: retrieve_context(query="What risks should I worry about?", token_budge
 
 ## Auto-Summarisation: Compressing Old Conversations
 
-After every 20 messages (configurable), a **background process** kicks in and compresses the conversation into a short summary, which gets saved to Qdrant. The process runs silently — users never wait for it.
+After every 20 messages (configurable), a **background process** kicks in and compresses the conversation into a short summary, which gets saved to Qdrant. The process runs silently, users never wait for it.
 
 ```text
 Session: 20 messages exchanged
               │
               ▼
     ┌─────────────────────┐
-    │  Background task    │   Runs after the reply is sent — no delay for users
+    │  Background task    │   Runs after the reply is sent, no delay for users
     │  kicks in           │
     └────────┬────────────┘
              │
@@ -201,7 +201,7 @@ embed("What is the capital of France?")
 
 ## Data Flow: The Full Picture
 
-Here's everything together — from user message to stored memory and back:
+Here's everything together, from user message to stored memory and back:
 
 ```text
   USER SENDS A MESSAGE
@@ -227,7 +227,7 @@ Here's everything together — from user message to stored memory and back:
   └───────────────────────────────────────────────────────────┘
           │
           ▼
-  AGENT REPLIES — with full memory context ✓
+  AGENT REPLIES, with full memory context ✓
 ```
 
 ---
@@ -236,13 +236,13 @@ Here's everything together — from user message to stored memory and back:
 
 The library is safe to use in a high-traffic application:
 
-- **Multiple users simultaneously** — each `(agent_id, session_id)` pair is completely isolated. User A's memory never leaks into User B's context.
-- **Multiple async tasks** — built on Python's `asyncio`. You can call `store_turn()` and `retrieve_context()` from many coroutines at the same time without conflicts.
-- **Background tasks** — auto-summarisation runs as a fire-and-forget background task. If it fails (e.g. a network blip), the error is logged and silently swallowed. It never crashes your main application.
+- **Multiple users simultaneously**, each `(agent_id, session_id)` pair is completely isolated. User A's memory never leaks into User B's context.
+- **Multiple async tasks**, built on Python's `asyncio`. You can call `store_turn()` and `retrieve_context()` from many coroutines at the same time without conflicts.
+- **Background tasks**, auto-summarisation runs as a fire-and-forget background task. If it fails (e.g. a network blip), the error is logged and silently swallowed. It never crashes your main application.
 
 ---
 
 ## Further Reading
 
-- [API Reference](api-reference.md) — every method documented with examples
-- [Examples / Cookbook](../examples/) — copy-paste scripts to get started fast
+- [API Reference](api-reference.md), every method documented with examples
+- [Examples / Cookbook](../examples/), copy-paste scripts to get started fast

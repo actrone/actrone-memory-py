@@ -1,4 +1,4 @@
-"""Framework-agnostic core — mypy-checked example source for the docs."""
+"""Framework-agnostic core, mypy-checked example source for the docs."""
 # region core
 from actrone_memory import MemoryManager
 

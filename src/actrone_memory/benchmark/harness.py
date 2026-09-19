@@ -14,7 +14,7 @@ runs the queries, and reports recall@k / precision@k / MRR plus retrieval latenc
 Runs offline in CI so memory quality is a regression-gated property.
 
 Honest by construction: the default backend uses the dependency-free hashing
-embedder (keyword-overlap recall), so scores reflect *that* embedder — swap in a
+embedder (keyword-overlap recall), so scores reflect *that* embedder, swap in a
 real embedder (OpenAI / sentence-transformers) to measure semantic recall. The
 harness is embedder- and backend-agnostic; ``run_eval`` accepts any manager.
 """

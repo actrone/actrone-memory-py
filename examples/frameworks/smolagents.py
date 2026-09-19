@@ -1,4 +1,4 @@
-"""smolagents — mypy-checked example source for the docs."""
+"""smolagents, mypy-checked example source for the docs."""
 # region smolagents
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.smolagents import ActroneSmolagentsMemory

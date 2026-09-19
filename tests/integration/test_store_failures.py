@@ -1,6 +1,6 @@
 """Failure-mode integration tests for the L1 (Redis) and L2 (Qdrant) stores.
 
-These tests verify the resilience behaviour CLAUDE.md §4.4 mandates: bounded
+These tests verify the resilience behaviour this library commits to: bounded
 retries on transient failures, immediate fail-fast on permanent failures,
 and clean recovery once the dependency returns.
 
@@ -100,7 +100,7 @@ async def test_redis_recovers_after_restart(redis_store_recoverable):
     # the next command via its built-in auto-reconnect.
     container.get_wrapped_container().restart()
 
-    # Poll until Redis accepts connections again (typically 3–8 s on Docker Desktop).
+    # Poll until Redis accepts connections again (typically 3-8 s on Docker Desktop).
     for _ in range(15):
         await asyncio.sleep(1)
         try:
@@ -116,7 +116,7 @@ async def test_redis_recovers_after_restart(redis_store_recoverable):
             # Readiness poll: connection/timeout errors are expected until the container is back.
             continue
     else:
-        pytest.skip("Redis container did not come back within 15s — likely a slow CI host")
+        pytest.skip("Redis container did not come back within 15s, likely a slow CI host")
 
     later = Turn(session_id="s1", user_message="bye", assistant_message="cya", token_count=4)
     try:
@@ -152,7 +152,7 @@ async def qdrant_store_with_4dim():
 
 @pytest.mark.asyncio
 async def test_qdrant_rejects_wrong_dimension_fast(qdrant_store_with_4dim: QdrantStore):
-    """A vector of the wrong dimension is a permanent error — the retry layer
+    """A vector of the wrong dimension is a permanent error, the retry layer
     must surface it within one attempt, not burn three retries."""
     entry = MemoryEntry(
         agent_id="a",
@@ -173,7 +173,7 @@ async def test_qdrant_rejects_wrong_dimension_fast(qdrant_store_with_4dim: Qdran
     # The retry policy uses 1s..10s backoff per attempt; a non-retryable
     # 4xx response should return within ~5 seconds even with retries enabled.
     # Allow a generous ceiling but assert we didn't burn the full 30s window.
-    assert elapsed < 20.0, f"upsert took {elapsed:.2f}s — retries likely consumed"
+    assert elapsed < 20.0, f"upsert took {elapsed:.2f}s, retries likely consumed"
 
 
 # ── Embedder + Qdrant rollback semantics ────────────────────────────────────
@@ -209,7 +209,7 @@ async def test_cached_embedder_propagates_inner_failure():
 
 @pytest.mark.asyncio
 async def test_redis_concurrent_writes_serialise(redis_store_recoverable):
-    """Concurrent appends from many coroutines must all land — Redis is single-
+    """Concurrent appends from many coroutines must all land, Redis is single-
     threaded but the connection pool must not deadlock or drop writes."""
     store, _container = redis_store_recoverable
 
@@ -243,5 +243,5 @@ async def test_qdrant_timeout_is_finite():
     infinity if Qdrant accepts the TCP connection but never replies."""
     async with httpx.AsyncClient(timeout=httpx.Timeout(2.0)) as client:
         with pytest.raises((httpx.TimeoutException, httpx.ConnectError)):
-            # 198.51.100.1 is TEST-NET-2 — guaranteed to time out, not be routed.
+            # 198.51.100.1 is TEST-NET-2, guaranteed to time out, not be routed.
             await client.get("http://198.51.100.1:6333/collections")

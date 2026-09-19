@@ -1,6 +1,6 @@
 """Framework integration adapters for actrone-memory.
 
-Each adapter is optional — the corresponding framework must be installed first.
+Each adapter is optional, the corresponding framework must be installed first.
 Use the package extras to install the required dependencies::
 
     pip install actrone-memory[langchain]    # LangChain
@@ -20,13 +20,17 @@ Use the package extras to install the required dependencies::
 
 Two tiers (see ``_context.py``):
 
-- **Tier 1 — governed system-context string.** The universally-correct, framework-free path.
+- **Tier 1, governed system-context string.** The universally-correct, framework-free path.
   *Every* adapter exposes a ``build_context(query) -> str`` coroutine (conversational adapters
   render recent turns + episodic memory; the retrieval-shaped DSPy/Haystack adapters render the
-  ranked memories) — prepend the returned block to any prompt regardless of framework. The
+  ranked memories), prepend the returned block to any prompt regardless of framework. The
   Tier-1-only adapters (openai_agents, pydantic_ai, claude_agent_sdk) import no framework at all.
-- **Tier 2 — native conformance.** Where a framework has a formal memory contract, the adapter
-  also implements it (LangChain ``BaseMemory``, AutoGen ``Memory``, Semantic Kernel
+- **Tier 2, native conformance.** Where a framework has a formal memory contract, the adapter
+  also implements it (LangChain ``BaseChatMessageHistory``, AutoGen ``Memory``, Semantic Kernel
   ``ChatHistory``, Google ADK ``BaseMemoryService``, Microsoft Agent Framework
-  ``ContextProvider``, …). Those imports are lazy — pulled only when the native method runs.
+  ``ContextProvider``, …). Those imports are lazy, pulled only when the native method runs.
+
+LangChain spans two incompatible majors, so it has two Tier-2 adapters:
+``ActroneChatMessageHistory`` (``BaseChatMessageHistory``, present in 0.x and 1.x, use this)
+and ``ActroneMemory`` (``BaseMemory``, removed in 1.x, so 0.x only).
 """

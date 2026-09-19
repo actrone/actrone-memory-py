@@ -1,4 +1,4 @@
-"""AWS Strands — mypy-checked example source for the docs."""
+"""AWS Strands, mypy-checked example source for the docs."""
 # region aws_strands
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.aws_strands import ActroneStrandsMemory

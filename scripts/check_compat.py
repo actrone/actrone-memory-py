@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""check-compat — the framework-compatibility drift gate.
+"""check-compat, the framework-compatibility drift gate.
 
 Makes ``compatibility.yaml`` the single source of truth: fails if the ``[project.optional-
 dependencies]`` extras in ``pyproject.toml`` or the framework compatibility matrix in ``README.md``
@@ -113,13 +113,13 @@ def check_against(
 def main() -> None:
     errors = check()
     if errors:
-        print("[check-compat] DRIFT — pyproject/README disagree with compatibility.yaml:\n")
+        print("[check-compat] DRIFT, pyproject/README disagree with compatibility.yaml:\n")
         for e in errors:
             print(f"  x {e}")
         print("\nUpdate compatibility.yaml (the source of truth) or fix the drift, then re-run.")
         sys.exit(1)
     n = len(_load()[0]["frameworks"])
-    print(f"[check-compat] in sync — {n} frameworks; pyproject extras + README matrix agree OK")
+    print(f"[check-compat] in sync, {n} frameworks; pyproject extras + README matrix agree OK")
 
 
 if __name__ == "__main__":

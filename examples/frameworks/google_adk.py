@@ -1,4 +1,4 @@
-"""Google ADK — mypy-checked example source for the docs."""
+"""Google ADK, mypy-checked example source for the docs."""
 # region google_adk
 from actrone_memory import MemoryManager
 from actrone_memory.integrations.google_adk import ActroneGoogleADKMemory

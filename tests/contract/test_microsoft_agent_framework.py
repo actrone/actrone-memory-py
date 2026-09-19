@@ -3,7 +3,7 @@
 Tier 1 (``build_context`` / ``remember``) runs against a real local MemoryManager. The pure
 message helpers (``_message_text`` / ``_role_value`` / ``_last_role_text``) are unit-tested with
 duck-typed messages. The Tier-2 ``as_context_provider`` path lazily imports ``agent-framework``;
-when absent (base venv) the guard must raise a clear ``ImportError`` — asserted here.
+when absent (base venv) the guard must raise a clear ``ImportError``, asserted here.
 """
 
 from __future__ import annotations

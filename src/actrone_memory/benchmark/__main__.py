@@ -11,7 +11,7 @@ from actrone_memory.manager import MemoryManager
 
 async def _main() -> None:
     report = await run_eval()
-    print("actrone-memory — memory quality benchmark (local backend, hashing embedder)\n")
+    print("actrone-memory, memory quality benchmark (local backend, hashing embedder)\n")
     print(report.format_table())
 
     # Comparative run: Actrone vs the dependency-free naive baseline, same dataset.

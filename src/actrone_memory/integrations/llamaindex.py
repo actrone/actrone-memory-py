@@ -39,7 +39,7 @@ def _run_sync(coro: Any) -> Any:  # noqa: ANN401
     When no event loop is running (the common case in scripts and tests) this
     calls ``asyncio.run()``.  When a loop *is* running (Jupyter, FastAPI,
     async test runners) it submits the coroutine to a fresh thread so the
-    caller does not block the running loop — matching the same pattern used in
+    caller does not block the running loop, matching the same pattern used in
     ``haystack.py`` and ``dspy.py``.
     """
     try:

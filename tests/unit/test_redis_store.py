@@ -15,7 +15,7 @@ def _make_store(mock_redis: MagicMock) -> RedisStore:
 
 
 def _make_redis() -> MagicMock:
-    """AsyncMock for the Redis client — pipeline() is sync, all others are async."""
+    """AsyncMock for the Redis client, pipeline() is sync, all others are async."""
     redis = MagicMock()
     redis.hget = AsyncMock(return_value=None)
     redis.hset = AsyncMock()
@@ -51,7 +51,7 @@ def test_meta_key():
 
 @pytest.mark.asyncio
 async def test_append_turn_executes_pipeline():
-    # pipeline() is synchronous in redis-py — use MagicMock, not AsyncMock
+    # pipeline() is synchronous in redis-py, use MagicMock, not AsyncMock
     pipe = MagicMock()
     pipe.execute = AsyncMock(return_value=[1, None, True, None, 1, True])
 

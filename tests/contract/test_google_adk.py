@@ -2,7 +2,7 @@
 
 Tier 1 (``build_context`` / ``remember``) runs against a real local MemoryManager. The Tier-2
 ``as_memory_service`` path lazily imports ``google-adk``; when it is absent (base venv) the guard
-must raise a clear ``ImportError`` — asserted here. The ``_adk_content_text`` flattener is pure
+must raise a clear ``ImportError``, asserted here. The ``_adk_content_text`` flattener is pure
 and unit-tested. A full native ``BaseMemoryService`` test runs when ``google-adk`` is installed.
 """
 

@@ -6,13 +6,13 @@ from typing import Any, Protocol, runtime_checkable
 from actrone_memory.benchmark.dataset import DEFAULT_DATASET, EvalCase
 from actrone_memory.benchmark.harness import EvalReport, QueryOutcome, _aggregate
 
-"""Comparative benchmark — run the SAME dataset against multiple memory systems.
+"""Comparative benchmark, run the SAME dataset against multiple memory systems.
 
 Honest by design: any system satisfying :class:`MemorySystem` (Actrone, or a thin
 competitor adapter for Mem0/Zep/Letta) is evaluated on the identical dataset + metrics,
 so the comparison is apples-to-apples and reproducible. Bundled runs compare Actrone
 against the dependency-free baseline; competitor numbers require their libs + keys
-(off the CI gate) — add an adapter and pass it in.
+(off the CI gate), add an adapter and pass it in.
 """
 
 

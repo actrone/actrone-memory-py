@@ -1,7 +1,7 @@
-# actrone-memory — memory quality benchmark & eval harness
+# actrone-memory: memory quality benchmark & eval harness
 
 **The only memory library that ships its own quality eval.** Memory quality is a
-measurable, regression-gated property here — not a vibe. This harness runs in CI on
+measurable, regression-gated property here, not a vibe. This harness runs in CI on
 every change, fully offline (no services, no API key), so a change that degrades
 recall fails the build.
 
@@ -11,7 +11,7 @@ recall fails the build.
 python -m actrone_memory.benchmark
 ```
 
-Output (default local backend — in-memory store + dependency-free hashing embedder):
+Output (default local backend, in-memory store + dependency-free hashing embedder):
 
 ```text
 | metric        | value   |
@@ -30,18 +30,18 @@ A bundled, LongMemEval-style dataset (`dataset.py`) seeds durable memories for a
 agent, then poses queries whose *relevant* memory ids are known ground truth. The
 harness reports standard information-retrieval metrics:
 
-- **recall@k** — of the memories that *should* be recalled, what fraction land in
+- **recall@k**, of the memories that *should* be recalled, what fraction land in
   the top-k.
-- **precision@k** — of the top-k returned, what fraction are relevant. (With one
-  relevant memory per query, the ceiling is `1/k` — so ~0.2 at k=5 is near-perfect,
+- **precision@k**, of the top-k returned, what fraction are relevant. (With one
+  relevant memory per query, the ceiling is `1/k`, so ~0.2 at k=5 is near-perfect,
   not a weakness.)
-- **MRR** — mean reciprocal rank of the first relevant hit.
-- **latency p50/p95** — per-query retrieval time.
+- **MRR**, mean reciprocal rank of the first relevant hit.
+- **latency p50/p95**, per-query retrieval time.
 
 ## Be honest about what this shows
 
 The **default** scores reflect the **hashing embedder** (keyword overlap), not
-semantic understanding. That is the point of the free, zero-service default — and
+semantic understanding. That is the point of the free, zero-service default, and
 its limits are real: paraphrases with no shared words score low. Where we **win**
 today is latency, cost, local-first/zero-egress, and governance (provenance +
 erasure). Where we **lose** today is raw semantic recall depth versus dense-embedding
@@ -70,7 +70,7 @@ The bundled run compares Actrone against a dependency-free naive recency baselin
 | recency-baseline | 0.571    | 0.114       | 0.273 | 0.01 ms     |
 ```
 
-Any object satisfying the tiny `MemorySystem` protocol is comparable — just two
+Any object satisfying the tiny `MemorySystem` protocol is comparable, just two
 async methods:
 
 ```python
@@ -87,7 +87,7 @@ import asyncio
 from actrone_memory import MemoryConfig, MemoryManager
 from actrone_memory.benchmark import run_comparison, format_comparison
 
-class Mem0Adapter:  # sketch — wrap the real mem0 client
+class Mem0Adapter:  # sketch, wrap the real mem0 client
     def __init__(self, client): self._c = client
     async def inject_memory(self, agent_id, content):
         return self._c.add(content, user_id=agent_id)["id"]

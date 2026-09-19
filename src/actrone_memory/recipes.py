@@ -1,4 +1,4 @@
-"""Framework recipes — the "install → paste → run" onboarding surface, and the single source of
+"""Framework recipes, the "install → paste → run" onboarding surface, and the single source of
 truth for the ``actrone-memory`` CLI and the docs. Selection, not detection: the developer picks a
 framework and gets a short, identical-shape recipe. The Python counterpart of the TypeScript
 ``recipes.ts`` (literal DX symmetry with ``npx @actrone/memory add``).
@@ -49,9 +49,14 @@ RECIPES: dict[str, Recipe] = {
         "langchain",
         "LangChain",
         "langchain",
-        "from actrone_memory.integrations.langchain import ActroneMemory\n\n"
-        "memory = ActroneMemory(agent_id='support-bot', session_id='s1')\n"
-        "chain = ConversationChain(llm=llm, memory=memory)  # drop-in BaseMemory",
+        "from actrone_memory.integrations.langchain import ActroneChatMessageHistory\n\n"
+        "# Works on LangChain 0.x and 1.x (1.x removed BaseMemory; chat history survived).\n"
+        "history = ActroneChatMessageHistory(agent_id='support-bot', session_id='s1')\n"
+        "chain = RunnableWithMessageHistory(runnable, lambda _: history)\n"
+        "await chain.ainvoke({'input': 'hello'},\n"
+        "                    config={'configurable': {'session_id': 's1'}})\n"
+        "# On LangChain 0.x you can still use the BaseMemory adapter instead:\n"
+        "#   from actrone_memory.integrations.langchain import ActroneMemory",
     ),
     "langgraph": _recipe(
         "langgraph",
@@ -207,7 +212,7 @@ def get_recipe(framework: str) -> Recipe | None:
 def render_recipe(recipe: Recipe) -> str:
     """Render a recipe as a readable "install → paste → run" block for stdout."""
     return (
-        f"# {recipe.label} — memory in a few lines\n\n"
+        f"# {recipe.label}, memory in a few lines\n\n"
         f"1) Install\n   {recipe.install}\n\n"
         f"2) Paste into your agent (or a new file)\n\n{recipe.snippet}\n\n"
         "Docs: https://actrone.com/docs/memory/overview"
@@ -217,7 +222,7 @@ def render_recipe(recipe: Recipe) -> str:
 def render_standalone_file(recipe: Recipe) -> str:
     """Render a recipe as a self-contained new file for ``--write`` (never edits yours)."""
     return (
-        f"# actrone-memory — {recipe.label} recipe (generated; safe to edit).\n"
+        f"# actrone-memory, {recipe.label} recipe (generated; safe to edit).\n"
         f"# Install: {recipe.install}\n"
         "# This is a NEW self-contained file. Import what you need from it into your agent.\n\n"
         f"{recipe.snippet}\n"

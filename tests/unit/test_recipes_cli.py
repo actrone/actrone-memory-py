@@ -60,7 +60,7 @@ def test_new_adapter_recipes_are_backed_by_mypy_checked_examples() -> None:
     """Trust gate (mirrors the TS recipes-examples test): every adapter added this cycle ships a
     real ``examples/frameworks/<slug>.py`` whose ``# region`` snippet is extracted into
     snippets.json. ``mypy examples/frameworks/`` type-checks those sources in CI, so a recipe whose
-    wiring stops compiling fails the build — the recipes are verified, not just strings."""
+    wiring stops compiling fails the build, the recipes are verified, not just strings."""
     snippets_path = (
         Path(__file__).resolve().parents[2] / "examples" / "snippets.json"
     )

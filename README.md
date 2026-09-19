@@ -80,12 +80,14 @@ docker run -d -p 6333:6333 qdrant/qdrant:v1.9.2
 
 ```python
 import asyncio
-from actrone_memory import MemoryManager
+from actrone_memory import create_memory_manager
 
 async def main():
     # Local-first by default: in-memory store + a dependency-free embedder.
     # No Redis, no Qdrant, no OpenAI key required.
-    async with MemoryManager.create() as memory:
+    # create_memory_manager() closes the manager for you on exit; use
+    # `memory = await MemoryManager.create()` if you want to manage that yourself.
+    async with create_memory_manager() as memory:
         # Save what the user said
         await memory.store_turn(
             agent_id   = "my-agent",
@@ -143,6 +145,131 @@ export ACTRONE_OPENAI_API_KEY=sk-...
 ```
 
 No code changes. The same `MemoryManager.create()` reads these at startup.
+
+### Which backends are supported?
+
+| Tier | Shipped implementations |
+| --- | --- |
+| Hot session (L1) | in-process (default), **Redis**, **Postgres** |
+| Long-term semantic (L2) | in-process (default), **Qdrant**, **Postgres + pgvector** |
+
+`ACTRONE_BACKEND` selects the two wired-by-env combinations, `memory` or `redis_qdrant`.
+The Postgres stores are passed to `create()` directly (see below), because they take a DSN
+or a pool you already own.
+
+**Redis-compatible servers work with the Redis adapter unmodified.** It uses only standard
+commands (`RPUSH`, `LTRIM`, `LRANGE`, `EXPIRE`, `SET NX EX`, hashes, pipelines), so
+**Valkey**, DragonflyDB, ElastiCache and Upstash need no separate adapter. Valkey is covered
+by its own integration suite (`tests/integration/test_valkey_compatibility.py`), which runs
+the full conformance suite against a real Valkey container rather than assuming it.
+
+#### Postgres, for "no new infrastructure"
+
+If you already run Postgres, both tiers can live there and you add no service at all.
+Install `pip install "actrone-memory[pgvector]"`, which needs the
+[pgvector](https://github.com/pgvector/pgvector) extension for the long-term tier.
+
+```python
+import asyncpg
+from actrone_memory import MemoryManager
+from actrone_memory.l1.postgres_store import PostgresStore
+from actrone_memory.l2.pgvector_store import PgVectorStore
+
+# One pool for both tiers, owned by your application.
+pool = await asyncpg.create_pool("postgresql://localhost/mydb")
+
+l1 = PostgresStore.from_pool(pool)
+l2 = PgVectorStore.from_pool(pool, dimensions=1536)
+await l1.ensure_schema()
+await l2.ensure_schema()
+
+memory = await MemoryManager.create(l1=l1, l2=l2)
+```
+
+Or let each store own its own pool with `await PostgresStore.from_dsn(dsn)` and
+`await PgVectorStore.from_dsn(dsn, dimensions=1536)`.
+
+Postgres has no TTL or list trimming, so the L1 store implements both explicitly: an
+`expires_at` column filtered on read and cleaned opportunistically on write, and a retention
+cap enforced on append. Honest trade-off: Redis is faster for the hot path, and the long-term
+tier is the one where replacing a whole extra service matters most.
+
+#### Bring your own store
+
+The built-in adapters have no privileged access: they implement `L1Store` and `L2Store` like
+anything else would. Any engine that can satisfy those `typing.Protocol` seams plugs in
+without touching the manager, and the store you pass is used as-is, so no built-in backend is
+constructed or connected behind it.
+
+```python
+from actrone_memory import MemoryManager
+
+class MyWeaviateStore:            # structural, no subclassing required
+    async def upsert(self, entry): ...
+    async def search(self, agent_id, query_embedding, threshold, limit=20,
+                     content_types=None, query_text=None): ...
+    async def delete(self, memory_id): ...
+    async def delete_agent_memories(self, agent_id): ...
+    async def close(self): ...
+
+memory = await MemoryManager.create(l2=MyWeaviateStore())
+```
+
+Two things worth knowing before you write one:
+
+- **Return the embedding with each search hit** if you rank with the bundled `hybrid_rank`
+  helper, which recomputes cosine locally. It raises a clear error rather than returning
+  silent zeros if none of your candidates carry one. If your database ranks server-side and
+  does not return vectors (Pinecone needs `include_values`), use `fuse_channels` with its own
+  scores instead, the way `QdrantStore` does.
+- **`try_acquire_summary_lock` must be a single atomic operation** (Redis `SET NX EX`,
+  Postgres `INSERT ... ON CONFLICT ... WHERE expires_at <= now()`), never a read then a
+  write, or concurrent workers will all summarise the same session.
+
+#### Verifying your own store
+
+To make that a supported extension point rather than a claim, the package ships the same
+conformance suite the built-in stores are held to:
+
+```python
+import asyncio
+from actrone_memory.testing import check_l1_store, check_l2_store
+
+asyncio.run(check_l2_store(lambda: MyWeaviateStore(...), dimensions=1536))
+```
+
+It checks the behaviours the type system cannot: turns come back oldest-first, `n` windows
+from the end, a search never returns another agent's memories, `threshold`, `limit` and
+`content_types` are honoured, an upsert replaces rather than duplicates, erasure is scoped,
+and a summary lock admits one holder. Each failure raises `ConformanceError` naming the
+requirement. `@actrone/memory/testing` is the TypeScript equivalent, against the same
+contract, so an adapter in either language is held to the same bar.
+
+The manager does not depend on those classes directly. It depends on two
+`typing.Protocol` seams, `L1Store` and `L2Store` (`actrone_memory.protocols`), so any
+other engine (pgvector, Weaviate, Pinecone, Valkey, Postgres, and so on) works by
+implementing the protocol and passing your instance to `create()`:
+
+```python
+from actrone_memory import MemoryManager
+
+class MyPgVectorStore:          # structurally satisfies L2Store, no subclassing needed
+    async def upsert(self, entry): ...
+    async def search(self, agent_id, query_embedding, threshold, limit=20,
+                     content_types=None, query_text=None): ...
+    async def delete(self, memory_id): ...
+    async def delete_agent_memories(self, agent_id): ...
+    async def close(self): ...
+
+memory = await MemoryManager.create(l2=MyPgVectorStore())
+```
+
+Anything you inject is used as-is and the matching built-in backend is never built, so
+injecting a store opens no connection to Redis or Qdrant. Injecting both stores keeps
+the library entirely free of database drivers.
+
+There is no built-in adapter for those other engines and none is planned as a hard
+dependency: keeping the base install free of database drivers is the point.
 
 ---
 
@@ -229,7 +356,7 @@ and pulls **none** of these, nor Redis/Qdrant/OpenAI (those are the `redis`/`qdr
 
 | Framework | Extra | Tested version | Tiers |
 | --- | --- | --- | --- |
-| LangChain | `langchain` | `>=0.2,<1` | 1 + 2 (`BaseMemory`) |
+| LangChain | `langchain` | `>=0.2,<3` | 1 + 2 (`BaseChatMessageHistory`; `BaseMemory` on 0.x) |
 | LangGraph | `langgraph` | `>=0.1,<2` | 1 + 2 (checkpointer) |
 | CrewAI | `crewai` | `>=0.30,<2` | 1 + 2 |
 | AutoGen | `autogen` | `>=0.4,<1` | 1 + 2 (`Memory`) |
@@ -246,20 +373,52 @@ and pulls **none** of these, nor Redis/Qdrant/OpenAI (those are the `redis`/`qdr
 | Google ADK | `google_adk` | `>=1.0,<2` | 1 + 2 (`BaseMemoryService`) |
 | Microsoft Agent Framework | `microsoft_agent_framework` | `>=1.0,<2` | 1 + 2 (`ContextProvider`) |
 
+#### Security posture of the framework extras
+
+The base install and the `redis` / `qdrant` / `openai` extras carry **no known
+vulnerabilities**, and CI audits both sets on every pull request. The framework extras pull
+in third-party dependency trees we do not control, so their posture is worth knowing before
+you install:
+
+| Extra | Status |
+| --- | --- |
+| `langchain` | **Resolves clean on 1.x.** This extra spans both majors (`>=0.2,<3`) precisely so you can take LangChain's security fixes, which only exist in the 1.x line. If you pin `langchain-core<1` yourself you stay on 0.3.x, which has published advisories with no 0.3.x fix. |
+| `semantic_kernel` | Resolves to `semantic-kernel` 1.36.x and `werkzeug` 3.1.1, both with advisories. Upstream, not our cap: `semantic-kernel` 1.39.4+ requires a pre-release (`azure-ai-agents>=1.2.0b3`) that a normal `pip install` will not take, and `werkzeug` is held down by `openapi-core`. Neither is in a code path this adapter uses. |
+
+If an advisory affects a framework component your own application uses, you can always
+install that framework yourself at the version you need and use the **Tier-1** framework-free
+context string, which imports no framework at all.
+
 ### LangChain: swap in 1 line
 
+LangChain 1.x removed the `BaseMemory` abstraction, so there are two adapters. Reach for
+`ActroneChatMessageHistory` unless you are pinned to 0.x: it targets
+`BaseChatMessageHistory`, which is unchanged across both majors.
+
 ```python
-# Before (built-in, forgets everything):
-# from langchain.memory import ConversationBufferMemory
-# memory = ConversationBufferMemory()
+# Works on LangChain 0.x and 1.x
+from actrone_memory.integrations.langchain import ActroneChatMessageHistory
 
-# After (persistent, searchable):
-from actrone_memory.integrations.langchain import ActroneMemory
-memory = ActroneMemory(agent_id="my-agent", session_id="user-123")
+history = ActroneChatMessageHistory(agent_id="my-agent", session_id="user-123")
+chain = RunnableWithMessageHistory(runnable, lambda _: history)
 
-# The rest of your code stays exactly the same
-chain = ConversationChain(llm=llm, memory=memory)
+await chain.ainvoke(
+    {"input": "hello"},
+    config={"configurable": {"session_id": "user-123"}},
+)
 ```
+
+```python
+# LangChain 0.x only: the classic BaseMemory drop-in.
+# Raises on 1.x with a pointer to the adapter above.
+from actrone_memory.integrations.langchain import ActroneMemory
+
+memory = ActroneMemory(agent_id="my-agent", session_id="user-123")
+chain = ConversationChain(llm=llm, memory=memory)  # rest of your code unchanged
+```
+
+The adapter is async-only because the store is, so drive LangChain through `ainvoke` /
+`astream` and the `aget_messages` / `aadd_messages` / `aclear` methods.
 
 ### LangGraph: plug-in checkpointer
 
@@ -295,7 +454,7 @@ setting a single one.
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `ACTRONE_BACKEND` | `memory` | `memory` runs fully in-process. Set `redis_qdrant` for the durable backend. |
-| `ACTRONE_EMBEDDING_PROVIDER` | `local` | `local` (sentence-transformers, offline), `hashing` (dependency-free), or `openai`. |
+| `ACTRONE_EMBEDDING_PROVIDER` | `local` | `local` (best offline embedder available: ONNX, then sentence-transformers, then hashing), `hashing` (dependency-free, no model download), or `openai`. |
 | `ACTRONE_OPENAI_API_KEY` | *(none)* | Required **only** when `ACTRONE_EMBEDDING_PROVIDER=openai`. Unused otherwise. |
 | `ACTRONE_REDIS_URL` | `redis://localhost:6379` | Where your Redis is running. Used only when `ACTRONE_BACKEND=redis_qdrant`. |
 | `ACTRONE_QDRANT_URL` | `http://localhost:6333` | Where your Qdrant is running. Used only when `ACTRONE_BACKEND=redis_qdrant`. |

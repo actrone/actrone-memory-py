@@ -1,6 +1,6 @@
 # Contributing to actrone-memory
 
-First off — thank you for wanting to help. Whether it's fixing a typo, improving a code example, or building a new integration, every contribution matters.
+First off, thank you for wanting to help. Whether it's fixing a typo, improving a code example, or building a new integration, every contribution matters.
 
 This document walks you through everything you need to get set up and submit a pull request.
 
@@ -8,9 +8,9 @@ This document walks you through everything you need to get set up and submit a p
 
 ## What You'll Need Before You Start
 
-- **Python 3.11 or newer** — check with `python --version`
-- **[uv](https://docs.astral.sh/uv/)** — the package manager we use
-- **[Docker](https://docs.docker.com/get-docker/)** — needed to run Redis and Qdrant locally for integration tests
+- **Python 3.11 or newer**, check with `python --version`
+- **[uv](https://docs.astral.sh/uv/)**, the package manager we use
+- **[Docker](https://docs.docker.com/get-docker/)**, needed to run Redis and Qdrant locally for integration tests
 
 Install uv with:
 
@@ -37,7 +37,7 @@ docker run -d --name actrone-qdrant -p 6333:6333 qdrant/qdrant:v1.9.2
 
 # 4. Set your environment variables
 cp .env.example .env
-# Then open .env and fill in your values — at minimum ACTRONE_OPENAI_API_KEY
+# Then open .env and fill in your values, at minimum ACTRONE_OPENAI_API_KEY
 ```
 
 You're ready.
@@ -46,7 +46,7 @@ You're ready.
 
 ## Running the Tests
 
-### Unit tests — no infrastructure needed, run these constantly
+### Unit tests: no infrastructure needed, run these constantly
 
 ```bash
 pytest tests/unit/ -v
@@ -54,7 +54,7 @@ pytest tests/unit/ -v
 
 These test all the logic using mock objects, so you don't need Redis or Qdrant running. Run them every time you change something.
 
-### Integration tests — requires running Redis + Qdrant
+### Integration tests: requires running Redis + Qdrant
 
 ```bash
 pytest tests/integration/ -v
@@ -145,7 +145,7 @@ We keep things consistent so the codebase stays readable for everyone:
 5. Push and open a pull request against main
 ```
 
-**In your PR description, explain *why* the change is needed** — not just what you changed. "Fixes a bug" tells us nothing; "Redis was not releasing the pipeline object on timeout, causing connection leaks" tells us everything.
+**In your PR description, explain *why* the change is needed**, not just what you changed. "Fixes a bug" tells us nothing; "Redis was not releasing the pipeline object on timeout, causing connection leaks" tells us everything.
 
 ### What we look for in review
 
@@ -158,17 +158,17 @@ We keep things consistent so the codebase stays readable for everyone:
 
 ## Reporting a Bug
 
-Open a [GitHub Issue](https://github.com/actrone/actrone-memory/issues) with:
+Open a [GitHub Issue](https://github.com/actrone/actrone-memory-py/issues) with:
 
 - Your Python version (`python --version`) and OS
 - A minimal code snippet that reproduces the problem
 - What you expected to happen vs. what actually happened
 - Any relevant error messages or logs (redact API keys and personal data before pasting)
 
-For security vulnerabilities, **do not open a public issue** — see [SECURITY.md](SECURITY.md) for the private reporting process.
+For security vulnerabilities, **do not open a public issue**, see [SECURITY.md](SECURITY.md) for the private reporting process.
 
 ---
 
 ## Questions?
 
-Open a [Discussion](https://github.com/actrone/actrone-memory/discussions) on GitHub — no question is too basic.
+Open a [Discussion](https://github.com/actrone/actrone-memory-py/discussions) on GitHub, no question is too basic.

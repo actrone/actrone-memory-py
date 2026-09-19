@@ -1,4 +1,4 @@
-"""Unit tests for the in-process ONNX embedder (Axis A1) and the graceful local chain (A2).
+"""Unit tests for the in-process ONNX embedder and the graceful local chain.
 
 These stub ``fastembed`` so they run in the base venv (no heavy onnxruntime download) and cover:
 the ONNX wrapper's embed/dimensions logic, and ``build_local_embedder`` degrading ONNX →

@@ -74,7 +74,7 @@ async def test_aput_user_message_buffered(memory: ActroneLlamaMemory, mock_mm: A
     from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
     await memory.aput(ChatMessage(role=MessageRole.USER, content="Hello"))
-    # Not yet stored — waiting for assistant response.
+    # Not yet stored, waiting for assistant response.
     mock_mm.store_turn.assert_not_awaited()
     assert memory._pending_user_msg == "Hello"
 

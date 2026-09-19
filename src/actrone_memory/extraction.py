@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from typing import Protocol, runtime_checkable
 
-import structlog
 from pydantic import BaseModel, Field
 
+from actrone_memory.logging import bind_logger
 from actrone_memory.models import Sensitivity
 
-log = structlog.get_logger(__name__)
+log = bind_logger(__name__)
 
 # ── Shared extraction spec v1 (language-neutral; keep in lockstep with the TS lib) ──
 # The canonical reference lives at docs/memory-spec/extraction.v1.md. The prompt and
@@ -25,7 +25,7 @@ EXTRACTION_SYSTEM_PROMPT = (
     "stable user attributes, preferences, decisions, commitments, and key entities. "
     "Ignore small talk, transient state, and anything already obvious.\n"
     "For each fact, classify its sensitivity: 'none' (non-personal), 'low' (mild "
-    "preference), 'pii' (personally identifiable — names, emails, phone, address, "
+    "preference), 'pii' (personally identifiable, names, emails, phone, address, "
     "account numbers), or 'sensitive' (health, financial, credentials, special "
     "category). Assign an importance from 0.0 to 1.0.\n"
     'Respond with strict JSON of the form {"facts": [{"content": "...", '
@@ -64,7 +64,7 @@ def parse_facts(raw: str) -> list[ExtractedFact]:
     """Parse a model's JSON response into validated facts, defensively.
 
     Tolerates a bare list or a ``{"facts": [...]}`` envelope, skips malformed
-    entries, clamps oversize content, and bounds the count. Never raises — a
+    entries, clamps oversize content, and bounds the count. Never raises, a
     completely unparseable response yields ``[]``.
     """
     try:
@@ -92,7 +92,7 @@ def parse_facts(raw: str) -> list[ExtractedFact]:
                 importance=float(item.get("importance", 0.6)),
             )
         except (ValueError, TypeError):
-            # Bad sensitivity enum / importance out of range — skip this one fact.
+            # Bad sensitivity enum / importance out of range, skip this one fact.
             continue
         facts.append(fact)
     return facts

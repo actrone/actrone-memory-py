@@ -8,7 +8,7 @@ from uuid import uuid4
 """Competitor / baseline adapters for the comparative benchmark.
 
 The comparison harness (``compare.py``) evaluates any object satisfying the tiny
-:class:`MemorySystem` surface — ``inject_memory`` + ``search_memories`` — so a
+:class:`MemorySystem` surface, ``inject_memory`` + ``search_memories``, so a
 competitor (Mem0 / Zep / Letta / Cognee) can be dropped in with a thin adapter
 that maps those two calls onto its API. Those adapters are **not bundled**: they
 pull heavy deps and API keys that would break the offline CI gate. This module
@@ -28,7 +28,7 @@ class _Stored:
 @dataclass
 class RecencyBaseline:
     """A naive baseline: returns the most-recently-injected memories, ignoring the
-    query. Represents "no semantic retrieval" — the floor any real memory system
+    query. Represents "no semantic retrieval", the floor any real memory system
     should beat. Dependency-free and deterministic, so it anchors the comparison.
     """
 
@@ -41,11 +41,11 @@ class RecencyBaseline:
 
     async def search_memories(self, agent_id: str, query: str, limit: int) -> list[_Stored]:
         items = self._by_agent.get(agent_id, [])
-        # Most-recent-first, query ignored — the naive floor.
+        # Most-recent-first, query ignored, the naive floor.
         return list(reversed(items))[:limit]
 
 
-# ── E1: real competitor adapters (opt-in — heavy deps + API keys, NOT bundled) ──────────────────
+# ── E1: real competitor adapters (opt-in, heavy deps + API keys, NOT bundled) ──────────────────
 #
 # Each maps the two-call MemorySystem surface onto a competitor's 2026 client API. They are
 # lazily-imported and key-gated so the offline CI gate is unaffected; pass a pre-built ``client`` to
