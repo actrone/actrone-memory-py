@@ -77,7 +77,7 @@ Query:   "What are the risks of algorithmic trading?"
 Memory:  "I'm building a stock trading bot"
          [0.021, -0.418, 0.093, 0.671, ...]
 
-Similarity score: 0.94  ✓  (above 0.72 threshold, included)
+Similarity score: 0.94  ✓  (above the threshold, included)
 
 
 Query:   "What are the risks of algorithmic trading?"
@@ -89,7 +89,10 @@ Memory:  "My cat's name is Whiskers"
 Similarity score: 0.11  ✗  (below threshold, excluded)
 ```
 
-The **threshold** (default 0.72) is a quality gate, only memories that are genuinely relevant to the current question get included.
+The **threshold** is a quality gate: only memories that are genuinely relevant to the current question get included. Each
+embedder carries the threshold it was calibrated for, because similarity scores are not comparable across models: `0.63`
+for the default bge-small model, `0.4` for MiniLM, `0.3` for the keyword-only hashing embedder, and `0.72` for OpenAI or
+a custom embedder. `ACTRONE_RELEVANCE_THRESHOLD` overrides it.
 
 ---
 

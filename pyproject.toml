@@ -5,7 +5,7 @@ description = "Production-grade two-tier persistent memory for AI agents: local-
 readme = "README.md"
 license = "MIT"                    # PEP 639 SPDX expression
 license-files = ["LICENSE"]
-authors = [{ name = "Actrone", email = "hello@actrone.com" }]
+authors = [{ name = "Apocalypse Technologies", email = "hello@actrone.com" }]
 keywords = [
     "ai", "agents", "memory", "langchain", "langgraph", "crewai",
     "autogen", "llamaindex", "haystack", "dspy", "qdrant", "redis",
@@ -27,7 +27,8 @@ dependencies = [
     # zero-service in-memory + hashing path, so `pip install actrone-memory` pulls none of them.
     # Install the `redis` / `qdrant` / `openai` extras (or `production`) for the durable backend.
     "structlog>=24.1,<25",
-    "tiktoken>=0.7,<1",
+    # tiktoken is not a base dep either: the default token counter is a dependency-free heuristic
+    # with no network access. The `tiktoken` extra enables exact counts (token_counter="tiktoken").
     "tenacity>=8.3,<10",
     "prometheus-client>=0.20,<1",
     # Pinned explicitly: pydantic + structlog both pull it transitively and the
@@ -37,7 +38,7 @@ dependencies = [
 ]
 
 [project.scripts]
-# Non-destructive onboarding CLI, the Python counterpart of `npx @actrone/memory add`.
+# Non-destructive onboarding CLI, the Python counterpart of `npx actrone-memory add`.
 actrone-memory = "actrone_memory.cli:main"
 
 [project.optional-dependencies]
@@ -48,6 +49,8 @@ qdrant      = ["qdrant-client>=1.9,<2"]
 # Postgres + pgvector as the long-term tier: no new service for teams already on Postgres.
 pgvector    = ["asyncpg>=0.29,<1"]
 openai      = ["openai>=1.30,<3"]
+# Exact cl100k_base token counts (token_counter="tiktoken"); downloads the encoding once on first use.
+tiktoken    = ["tiktoken>=0.7,<1"]
 production  = ["actrone-memory[redis]", "actrone-memory[qdrant]", "actrone-memory[openai]"]
 # Widened to span 0.x AND the 1.x majors these frameworks shipped in 2026: the adapters
 # target stable, long-lived interfaces (StateGraph, llama-index-core Memory), so the pre-1.0 caps
@@ -96,6 +99,7 @@ all = [
     "actrone-memory[production]",
     "actrone-memory[onnx]",
     "actrone-memory[local]",
+    "actrone-memory[tiktoken]",
 ]
 dev = [
     # Held at <9 deliberately, NOT an oversight. PYSEC-2026-1845 (predictable
@@ -142,6 +146,27 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/actrone_memory"]
+
+# Hatchling's sdist otherwise ships everything git tracks, which here means the test suite, docs,
+# examples, media and CI config: megabytes that no installing user can run. Excluding rather than
+# including keeps `src/`, README, LICENSE and CHANGELOG in by default, so the sdist stays buildable
+# and PEP 517 installable while carrying only what it needs to build the wheel.
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/ci",
+  "/docs",
+  "/examples",
+  "/media",
+  "/scripts",
+  "/tests",
+  "/dist",
+  "/Dockerfile",
+  "/.pre-commit-config.yaml",
+  "/.env.example",
+  "/compatibility.yaml",
+  "/uv.lock",
+]
 
 [tool.ruff]
 target-version = "py311"
@@ -194,6 +219,7 @@ module = [
     "sentence_transformers.*",
     "torch.*",
     "fastembed.*",
+    "tiktoken.*",
     "mem0.*",
     "zep_cloud.*",
     "letta_client.*",

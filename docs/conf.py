@@ -13,8 +13,8 @@ from datetime import datetime
 sys.path.insert(0, os.path.abspath("../src"))
 
 project = "Actrone Memory (Python)"
-author = "Actrone"
-copyright = f"{datetime.now().year}, Actrone"  # noqa: A001
+author = "Apocalypse Technologies"
+copyright = f"{datetime.now().year}, Apocalypse Technologies"  # noqa: A001
 
 extensions = [
     "sphinx.ext.autodoc",

@@ -35,6 +35,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 log = bind_logger(__name__)
 
 _DEFAULT_TABLE = "agent_turns"
+# Every `# nosec B608` marker below is on a statement whose only interpolations are identifiers
+# validated here (and, in the pgvector store, the validated integer vector width); every value
+# is a bound $n parameter. Bandit cannot see that validation, so each one is marked.
 _SAFE_IDENTIFIER = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
 
@@ -133,7 +136,7 @@ class PostgresStore:
                     INSERT INTO {self._table}
                         (id, agent_id, session_id, turn, created_at, expires_at)
                     VALUES ($1, $2, $3, $4::jsonb, $5, now() + make_interval(secs => $6))
-                    """,
+                    """,  # nosec B608
                     turn.id,
                     agent_id,
                     session_id,
@@ -144,7 +147,7 @@ class PostgresStore:
                 # Opportunistic expiry, so no cron job is required for correctness.
                 await conn.execute(
                     f"DELETE FROM {self._table} "
-                    f"WHERE agent_id = $1 AND session_id = $2 AND expires_at <= now()",
+                    f"WHERE agent_id = $1 AND session_id = $2 AND expires_at <= now()",  # nosec B608
                     agent_id,
                     session_id,
                 )
@@ -158,7 +161,7 @@ class PostgresStore:
                         ORDER BY seq DESC
                         LIMIT $3
                     )
-                    """,
+                    """,  # nosec B608
                     agent_id,
                     session_id,
                     self._max_turns,
@@ -191,7 +194,7 @@ class PostgresStore:
                         LIMIT $3
                     ) AS recent
                     ORDER BY seq ASC
-                    """,
+                    """,  # nosec B608
                     agent_id,
                     session_id,
                     limit,
@@ -214,7 +217,7 @@ class PostgresStore:
             async with self._pool.acquire() as conn:
                 count = await conn.fetchval(
                     f"SELECT count(*) FROM {self._table} "
-                    f"WHERE agent_id = $1 AND session_id = $2 AND expires_at > now()",
+                    f"WHERE agent_id = $1 AND session_id = $2 AND expires_at > now()",  # nosec B608
                     agent_id,
                     session_id,
                 )
@@ -228,13 +231,13 @@ class PostgresStore:
         try:
             async with self._pool.acquire() as conn, conn.transaction():
                 await conn.execute(
-                    f"DELETE FROM {self._table} WHERE agent_id = $1 AND session_id = $2",
+                    f"DELETE FROM {self._table} WHERE agent_id = $1 AND session_id = $2",  # nosec B608
                     agent_id,
                     session_id,
                 )
                 await conn.execute(
                     f"DELETE FROM {self._locks_table} "
-                    f"WHERE agent_id = $1 AND session_id = $2",
+                    f"WHERE agent_id = $1 AND session_id = $2",  # nosec B608
                     agent_id,
                     session_id,
                 )
@@ -255,7 +258,7 @@ class PostgresStore:
                            max(created_at) AS last_active
                     FROM {self._table}
                     WHERE agent_id = $1 AND session_id = $2 AND expires_at > now()
-                    """,
+                    """,  # nosec B608
                     agent_id,
                     session_id,
                 )
@@ -294,7 +297,7 @@ class PostgresStore:
                         SET expires_at = EXCLUDED.expires_at
                         WHERE {self._locks_table}.expires_at <= now()
                     RETURNING 1
-                    """,
+                    """,  # nosec B608
                     agent_id,
                     session_id,
                     ttl_seconds,

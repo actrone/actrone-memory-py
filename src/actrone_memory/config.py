@@ -7,6 +7,27 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from actrone_memory.exceptions import ConfigurationError
 
+# Admission threshold for an embedder that declares no calibrated ``relevance_threshold``, such as
+# the OpenAI embedder or a custom one you pass in yourself.
+DEFAULT_RELEVANCE_THRESHOLD = 0.72
+
+
+def resolve_relevance_threshold(configured: float | None, declared: float | None) -> float:
+    """Return the admission threshold a manager applies.
+
+    Args:
+        configured: ``MemoryConfig.relevance_threshold``, or None when unset.
+        declared: The embedder's calibrated ``relevance_threshold``, or None if it declares none.
+
+    Returns:
+        The configured value when set, else the embedder's, else DEFAULT_RELEVANCE_THRESHOLD.
+    """
+    if configured is not None:
+        return configured
+    if declared is not None:
+        return declared
+    return DEFAULT_RELEVANCE_THRESHOLD
+
 
 class MemoryConfig(BaseSettings):
     """All configuration for actrone-memory.
@@ -69,7 +90,12 @@ class MemoryConfig(BaseSettings):
     # ── Episodic memory (L2 Qdrant) ──────────────────────────────────────
     qdrant_collection: str = "agent_memories"
     max_episodic_memories: int = 500
-    relevance_threshold: float = 0.72
+    # Minimum cosine similarity for a long-term memory to be admitted. Leave unset (None) to use the
+    # threshold the embedder was calibrated for (``Embedder.relevance_threshold``), falling back to
+    # DEFAULT_RELEVANCE_THRESHOLD for an embedder that declares none. Similarity scales differ by
+    # model, so one fixed number cannot suit them all: the lexical hashing embedder scores relevant
+    # text near 0.24, while bge-small scores unrelated text near 0.48.
+    relevance_threshold: float | None = None
     relevance_weight: float = 0.7  # recency_weight = 1 - relevance_weight
     recency_weight: float = 0.3
     # Hybrid retrieval: among the threshold-admitted candidates, fuse the embedding
@@ -116,6 +142,13 @@ class MemoryConfig(BaseSettings):
     # keeps shutdown bounded; 30 s is a sane default for most deployments.
     shutdown_grace_seconds: float = 30.0
 
+    # ── Token counting ───────────────────────────────────────────────────
+    # "heuristic" (default): about 4 characters per token, the same counter as the TypeScript
+    #   library, with no dependency and no network access.
+    # "tiktoken": exact cl100k_base counts. Needs the [tiktoken] extra, and tiktoken downloads the
+    #   encoding file once on first use unless TIKTOKEN_CACHE_DIR already holds it.
+    token_counter: Literal["heuristic", "tiktoken"] = "heuristic"  # noqa: S105  (a counter name, not a secret)
+
     # ── Token budget fractions (must sum to 1.0) ─────────────────────────
     budget_fraction_system: float = 0.30
     budget_fraction_episodic: float = 0.25
@@ -146,7 +179,7 @@ class MemoryConfig(BaseSettings):
                 details={"sum": budget_total},
             )
 
-        if not (0.0 < self.relevance_threshold < 1.0):
+        if self.relevance_threshold is not None and not (0.0 < self.relevance_threshold < 1.0):
             raise ConfigurationError(
                 f"relevance_threshold must be between 0 and 1, got {self.relevance_threshold}.",
                 details={"relevance_threshold": self.relevance_threshold},

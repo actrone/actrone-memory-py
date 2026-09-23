@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from actrone_memory.config import MemoryConfig
+from actrone_memory.config import MemoryConfig, resolve_relevance_threshold
 from actrone_memory.exceptions import (
     ConfigurationError,
     StoreConnectionError,
@@ -38,6 +38,7 @@ from actrone_memory.models import (
 )
 from actrone_memory.protocols import L1Store, L2Store
 from actrone_memory.rerank import CrossEncoderReranker, build_reranker
+from actrone_memory.tokens import TokenCounter, build_token_counter
 
 if TYPE_CHECKING:
     # `redis` / `qdrant-client` are OPTIONAL extras: only the durable `redis_qdrant` backend
@@ -103,6 +104,10 @@ class MemoryManager:
         self._summariser = summariser
         self._extractor = extractor
         self._reranker = reranker
+        self._threshold = resolve_relevance_threshold(
+            config.relevance_threshold, embedder.relevance_threshold
+        )
+        self._count_tokens: TokenCounter = build_token_counter(config.token_counter)
         # Strong references to background tasks. Without these, asyncio's GC
         # may collect the underlying task object mid-execution and silently
         # drop the work. close() drains this set before shutting down stores.
@@ -111,6 +116,15 @@ class MemoryManager:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    @property
+    def relevance_threshold(self) -> float:
+        """The admission threshold applied to long-term memories.
+
+        ``config.relevance_threshold`` when set, else the embedder's calibrated threshold, else
+        the library default.
+        """
+        return self._threshold
 
     async def store_turn(
         self,
@@ -144,10 +158,7 @@ class MemoryManager:
         _validate_text(user_message, "user_message", _MAX_MESSAGE_LEN)
         _validate_text(assistant_message, "assistant_message", _MAX_MESSAGE_LEN)
 
-        import tiktoken
-
-        enc = tiktoken.get_encoding("cl100k_base")
-        token_count = len(enc.encode(f"{user_message}\n{assistant_message}"))
+        token_count = self._count_tokens(f"{user_message}\n{assistant_message}")
 
         turn = Turn(
             session_id=session_id,
@@ -239,7 +250,7 @@ class MemoryManager:
         episodic_memories = await self._l2.search(
             agent_id=agent_id,
             query_embedding=query_embedding,
-            threshold=self._cfg.relevance_threshold,
+            threshold=self._threshold,
             limit=self._cfg.max_episodic_memories,
             query_text=query if self._cfg.hybrid_retrieval else None,
         )
@@ -326,9 +337,6 @@ class MemoryManager:
             raise ValidationError("topic_tags", f"must contain ≤ {_MAX_TAGS} tags")
         _validate_text(source, "source", _MAX_ID_LEN)
 
-        import tiktoken
-
-        enc = tiktoken.get_encoding("cl100k_base")
         embedding = await self._embedder.embed(content)
         entry = MemoryEntry(
             agent_id=agent_id,
@@ -338,7 +346,7 @@ class MemoryManager:
             embedding=embedding,
             importance_score=importance,
             topic_tags=tags,
-            token_count=len(enc.encode(content)),
+            token_count=self._count_tokens(content),
             source=source,
             sensitivity=sensitivity,
         )
@@ -442,7 +450,7 @@ class MemoryManager:
         candidates = await self._l2.search(
             agent_id=agent_id,
             query_embedding=embedding,
-            threshold=self._cfg.relevance_threshold,
+            threshold=self._threshold,
             limit=fetch_limit,
             query_text=query if self._cfg.hybrid_retrieval else None,
         )
@@ -545,9 +553,6 @@ class MemoryManager:
         if not facts:
             return []
 
-        import tiktoken
-
-        enc = tiktoken.get_encoding("cl100k_base")
         source_ids = [t.id for t in turns]
         stored: list[str] = []
         for fact in facts:
@@ -560,7 +565,7 @@ class MemoryManager:
                 embedding=embedding,
                 importance_score=fact.importance,
                 topic_tags=fact.topic_tags,
-                token_count=len(enc.encode(fact.content)),
+                token_count=self._count_tokens(fact.content),
                 source_turn_ids=source_ids,
                 source="extracted",
                 sensitivity=fact.sensitivity,
@@ -678,9 +683,6 @@ class MemoryManager:
                 # Used when no summariser is configured (local embedding mode).
                 summary = _extractive_summary(combined)
 
-            import tiktoken
-
-            enc = tiktoken.get_encoding("cl100k_base")
             embedding = await self._embedder.embed(summary)
             entry = MemoryEntry(
                 agent_id=agent_id,
@@ -689,7 +691,7 @@ class MemoryManager:
                 content_type="summary",
                 embedding=embedding,
                 importance_score=0.6,
-                token_count=len(enc.encode(summary)),
+                token_count=self._count_tokens(summary),
                 source_turn_ids=[t.id for t in turns],
                 source="summary",
             )

@@ -24,7 +24,7 @@ Usage::
 
         def forward(self, question: str) -> dspy.Prediction:
             context = self.retrieve(question).passages
-...
+            ...
 
     # Store turns after each inference to keep the memory up to date.
     await rm.store_turn(agent_id, session_id, user_msg, assistant_msg)

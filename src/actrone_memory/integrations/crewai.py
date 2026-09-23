@@ -11,12 +11,18 @@ from actrone_memory.manager import MemoryManager
 
 class ActroneCrewMemory:
     """
-    Drop-in CrewAI memory backend. Requires: pip install actrone-memory[crewai]
+    Actrone memory for CrewAI crews. Requires: pip install "actrone-memory[crewai]"
+
+    Feeds recalled memory into the task text rather than replacing CrewAI's own memory storage,
+    so it works the same across CrewAI versions.
 
     Usage:
         from actrone_memory.integrations.crewai import ActroneCrewMemory
-        memory = ActroneCrewMemory(agent_id="research-crew")
-        agent = Agent(role="Researcher", memory=True, memory_backend=memory)
+        memory = ActroneCrewMemory(agent_id="research-crew", session_id="project-alpha")
+        context = await memory.build_context("competitor pricing")
+        task = Task(description=f"{context}\\n\\nSummarise competitor pricing.", agent=agent)
+        # ...crew.kickoff(), then:
+        await memory.save(result, {"task_input": "Summarise competitor pricing."})
     """
 
     def __init__(
@@ -48,7 +54,7 @@ class ActroneCrewMemory:
 
         The universally-correct path: prepend the returned block to a task description or agent
         backstory regardless of framework. Returns ``""`` when nothing is relevant. Complements
-        the native CrewAI ``save`` / ``search`` methods below.
+        the ``save`` / ``search`` methods below.
         """
         mm = await self._get_manager()
         return await governed_context(
@@ -56,7 +62,7 @@ class ActroneCrewMemory:
         )
 
     async def save(self, value: Any, metadata: dict[str, Any] | None = None) -> None:
-        """Called by CrewAI to persist agent output."""
+        """Persist a crew's output as a turn; ``metadata["task_input"]`` is the task it answered."""
         content = str(value)
         task_input: str = (metadata or {}).get("task_input", "")
         mm = await self._get_manager()
@@ -68,7 +74,7 @@ class ActroneCrewMemory:
         )
 
     async def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
-        """Called by CrewAI to retrieve relevant memories."""
+        """Return the long-term memories most relevant to ``query``, as plain dicts."""
         mm = await self._get_manager()
         memories = await mm.search_memories(self.agent_id, query, limit=limit)
         return [

@@ -160,4 +160,4 @@ frameworks:
 # exclude list so an unexpected new extra is flagged).
 # Backend/tooling extras, not agent frameworks: no interface canary or version matrix applies.
 non_framework_extras:
-  [redis, qdrant, pgvector, openai, onnx, production, local, all, dev, docs]
+  [redis, qdrant, pgvector, openai, onnx, production, local, tiktoken, all, dev, docs]

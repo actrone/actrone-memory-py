@@ -18,7 +18,11 @@ jobs:
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
-      - run: uv pip install --system ruff mypy pydantic pydantic-settings structlog tenacity openai
+      # Lint against the project's real dependency set: core, dev and the backend extras. A
+      # hand-picked list drifted from pyproject, so mypy could not see prometheus-client or httpx;
+      # and without the extras' pins, testcontainers pulls redis 8, whose typing turns needed
+      # `type: ignore`s into errors on a version the [redis] extra (<6) never installs.
+      - run: uv pip install --system -e ".[dev,redis,qdrant,pgvector]"
       - name: Ruff, style and import checks
         run: ruff check src/ tests/
       - name: mypy, strict type checking
@@ -42,7 +46,7 @@ jobs:
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
-      - run: uv pip install --system -e ".[dev]"
+      - run: uv pip install --system -e ".[dev,redis,qdrant,pgvector]"
       - name: Run unit tests with coverage
         run: |
           python -m pytest tests/unit/ \
@@ -50,10 +54,11 @@ jobs:
             --cov-report=xml \
             --cov-fail-under=80 \
             -v
-      - name: Type-check docs examples (Phase 6 item 5)
-        # The guide snippets are real, mypy-checked example files against the installed package (which
-        # ships py.typed); an API change that breaks a documented snippet fails here.
-        run: mypy examples/quickstart.py --strict --explicit-package-bases
+      - name: Type-check docs and CLI recipe examples
+        # The guide snippets and every `actrone-memory add` recipe are real example files, type-checked
+        # against the installed package (which ships py.typed); an API change that breaks a documented
+        # snippet or a recipe fails here.
+        run: mypy examples/quickstart.py examples/frameworks --strict --explicit-package-bases
       - name: Verify extracted snippets are in sync
         run: python scripts/extract_snippets.py --check
       - uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0
@@ -85,7 +90,7 @@ jobs:
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "latest"
-      - run: uv pip install --system -e ".[dev]"
+      - run: uv pip install --system -e ".[dev,redis,qdrant,pgvector]"
       - name: Run integration tests
         run: |
           python -m pytest tests/integration/ \

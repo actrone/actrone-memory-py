@@ -41,7 +41,7 @@ class InMemoryStore:
 
     This is the local-first default: it needs no Redis and no Qdrant, so
     ``MemoryManager.create()`` runs with zero external services, parity with the
-    TypeScript ``@actrone/memory`` on-ramp. Data lives for the lifetime of the
+    TypeScript ``actrone-memory`` on-ramp. Data lives for the lifetime of the
     process; swap in :class:`RedisStore` + :class:`QdrantStore` for durability and
     horizontal scale.
 

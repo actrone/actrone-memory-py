@@ -8,14 +8,15 @@ production-ready structured JSON logs. For local development, call
 ``configure_dev_logging()`` instead for human-readable coloured output.
 
 If you have your own structlog configuration, there is nothing to call here: actrone-memory's
-loggers will inherit it automatically.
+loggers will inherit it automatically. With no configuration at all, the library is quiet: its
+events go to the standard ``logging`` module, so only warnings reach stderr.
 """
 
 from __future__ import annotations
 
 import logging
 import sys
-from typing import cast
+from typing import Any, cast
 
 import structlog
 
@@ -87,12 +88,50 @@ def bind_logger(name: str, **fields: object) -> structlog.stdlib.BoundLogger:
     would keep getting console output. Initial values stay lazy and pick up the
     configuration in force when the first line is actually emitted.
     """
-    # structlog.get_logger is typed as returning Any; cast back to the documented
-    # return type for callers under strict mypy.
+    # The proxy is duck-typed to BoundLogger (it forwards every attribute); cast back to the
+    # documented return type for callers under strict mypy.
     return cast(
         "structlog.stdlib.BoundLogger",
-        structlog.get_logger(name, service=_SERVICE_NAME, **fields),
+        _LibraryLogger(name, {"service": _SERVICE_NAME, **fields}),
     )
+
+
+# Used only while the application has not configured structlog. Rendered lines go to the standard
+# logging module, which drops anything below WARNING until the application configures it and prints
+# warnings to stderr through logging's last-resort handler.
+_UNCONFIGURED_PROCESSORS: list[structlog.typing.Processor] = [
+    structlog.stdlib.filter_by_level,
+    structlog.stdlib.add_log_level,
+    structlog.dev.ConsoleRenderer(colors=False),
+]
+
+
+class _LibraryLogger:
+    """A logger that follows the application's logging setup, and stays quiet without one.
+
+    structlog's unconfigured default prints every level, debug included, to stdout, which would put
+    this library's internal events into the output of any program that simply imports it. So each
+    call checks whether the application has configured structlog: if it has, the call goes to
+    structlog and inherits the application's processors, renderer and level; if it has not, the call
+    goes to the standard ``logging`` logger of the same name, where the application's (or Python's
+    default) level applies.
+    """
+
+    def __init__(self, name: str, fields: dict[str, object]) -> None:
+        self._name = name
+        self._fields = fields
+
+    def _target(self) -> Any:  # noqa: ANN401  (a structlog BoundLogger, typed Any by structlog)
+        if structlog.is_configured():
+            return structlog.get_logger(self._name, **self._fields)
+        return structlog.wrap_logger(
+            logging.getLogger(self._name),
+            processors=_UNCONFIGURED_PROCESSORS,
+            wrapper_class=structlog.stdlib.BoundLogger,
+        ).bind(**self._fields)
+
+    def __getattr__(self, attribute: str) -> Any:  # noqa: ANN401  (forwards any logger method)
+        return getattr(self._target(), attribute)
 
 
 def configure_json_logging(level: int = logging.INFO) -> None:

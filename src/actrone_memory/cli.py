@@ -1,7 +1,7 @@
 """``actrone-memory`` CLI, the non-destructive, existing-project onboarding path.
 
 It only **prints** a framework recipe or **creates one new file**; it never reads or edits your
-existing code. The Python counterpart of ``npx @actrone/memory add`` (literal DX symmetry)::
+existing code. The Python counterpart of ``npx actrone-memory add`` (literal DX symmetry)::
 
     actrone-memory add langgraph                    # print install + recipe
     actrone-memory add langgraph --write memory.py  # write ONE new file

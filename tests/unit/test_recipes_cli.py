@@ -10,9 +10,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from actrone_memory._example_snippets import EXAMPLE_SNIPPETS
 from actrone_memory.cli import run_cli
 from actrone_memory.recipes import (
     HOSTED_UPGRADE_HINT,
+    RECIPE_FRAMEWORKS,
     RECIPES,
     get_recipe,
     list_frameworks,
@@ -51,7 +55,10 @@ def test_every_recipe_is_well_formed() -> None:
     for slug, recipe in RECIPES.items():
         assert recipe.framework == slug
         assert recipe.label
-        assert recipe.install.startswith("pip install actrone-memory")
+        # Extras are quoted: unquoted brackets are a glob in zsh (the macOS default shell).
+        assert recipe.install == "pip install actrone-memory" or recipe.install.startswith(
+            'pip install "actrone-memory['
+        )
         # Every recipe ends with the one-import hosted-upgrade seed.
         assert recipe.snippet.rstrip().endswith(HOSTED_UPGRADE_HINT)
 
@@ -126,7 +133,7 @@ def test_add_prints_recipe() -> None:
     io = _FakeIO()
     assert run_cli(["add", "openai_agents"], io) == 0
     assert "OpenAI Agents SDK" in io.logs[0]
-    assert "pip install actrone-memory[openai_agents]" in io.logs[0]
+    assert 'pip install "actrone-memory[openai_agents]"' in io.logs[0]
 
 
 def test_add_unknown_framework_errors() -> None:
@@ -159,3 +166,42 @@ def test_unknown_command_errors() -> None:
     io = _FakeIO()
     assert run_cli(["frobnicate"], io) == 1
     assert "Unknown command" in io.errors[0]
+
+
+# ── The CLI prints exactly the mypy-checked example code ─────────────────────
+# Before this gate the recipes were hand-typed strings: the core recipe put `await` at module top
+# level, a SyntaxError in a normal Python file, and used names it never defined, so a `--write`
+# file could not even be imported.
+
+
+def test_every_framework_has_a_recipe_none_dropped_for_a_missing_example() -> None:
+    assert sorted(RECIPES) == sorted(RECIPE_FRAMEWORKS)
+
+
+def test_each_recipe_is_its_examples_code() -> None:
+    snippets_path = Path(__file__).resolve().parents[2] / "examples" / "snippets.json"
+    snippets = json.loads(snippets_path.read_text(encoding="utf-8"))
+    for framework, recipe in RECIPES.items():
+        assert EXAMPLE_SNIPPETS[framework] == snippets[framework]
+        assert recipe.snippet.startswith(snippets[framework].rstrip()), framework
+
+
+def test_every_written_file_is_valid_python_with_no_top_level_await() -> None:
+    import ast
+
+    for framework, recipe in RECIPES.items():
+        tree = ast.parse(render_standalone_file(recipe), filename=f"{framework}.py")
+        top_level_awaits = [
+            node for stmt in tree.body if not isinstance(stmt, ast.AsyncFunctionDef)
+            for node in ast.walk(stmt) if isinstance(node, ast.Await)
+        ]
+        assert top_level_awaits == [], framework
+
+
+def test_the_written_core_file_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import runpy
+
+    monkeypatch.setenv("ACTRONE_EMBEDDING_PROVIDER", "hashing")  # deterministic, no model download
+    target = tmp_path / "memory_core.py"
+    target.write_text(render_standalone_file(RECIPES["core"]), encoding="utf-8")
+    runpy.run_path(str(target), run_name="__main__")  # raises if the example fails

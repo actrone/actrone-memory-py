@@ -440,11 +440,12 @@ async with MemoryManager.create(config) as memory:
 | `redis_url` | `ACTRONE_REDIS_URL` | `redis://localhost:6379` | Where your Redis server is running |
 | `qdrant_url` | `ACTRONE_QDRANT_URL` | `http://localhost:6333` | Where your Qdrant server is running |
 | `qdrant_api_key` | `ACTRONE_QDRANT_API_KEY` | `None` | API key for Qdrant Cloud (not needed for self-hosted) |
-| `embedding_provider` | `ACTRONE_EMBEDDING_PROVIDER` | `openai` | Use `"local"` to run without internet or an API key |
+| `embedding_provider` | `ACTRONE_EMBEDDING_PROVIDER` | `local` | `local` (best offline embedder available: ONNX, then sentence-transformers, then hashing), `hashing`, or `openai` (needs an API key) |
 | `openai_api_key` | `ACTRONE_OPENAI_API_KEY` | `None` | Required when `embedding_provider = "openai"` |
 | `session_ttl_hours` | `ACTRONE_SESSION_TTL_HOURS` | `24` | How many hours before short-term memory expires |
 | `max_session_turns` | `ACTRONE_MAX_SESSION_TURNS` | `50` | Maximum messages stored in short-term memory per session |
-| `relevance_threshold` | `ACTRONE_RELEVANCE_THRESHOLD` | `0.72` | How similar a memory must be to the query before it's included (0.0-1.0). Raise this to be more selective. |
+| `relevance_threshold` | `ACTRONE_RELEVANCE_THRESHOLD` | *(calibrated)* | How similar a memory must be to the query before it's included (0.0-1.0). Unset, the embedder's calibrated value applies: `0.3` lexical, `0.63` bge-small, `0.4` MiniLM, `0.72` for OpenAI or a custom embedder. Raise it to be more selective. |
+| `token_counter` | `ACTRONE_TOKEN_COUNTER` | `heuristic` | `heuristic` (about 4 characters per token, no network) or `tiktoken` (exact counts, needs the `[tiktoken]` extra). |
 | `auto_summarise` | `ACTRONE_AUTO_SUMMARISE` | `true` | Automatically compress old conversations into long-term memory |
 | `summarise_after_turns` | `ACTRONE_SUMMARISE_AFTER_TURNS` | `20` | Trigger summarisation after this many turns |
 
@@ -562,7 +563,7 @@ graph = graph_builder.compile(checkpointer=checkpointer)
 
 ```python
 from actrone_memory.integrations.crewai import ActroneCrewMemory
-from crewai import Agent
+from crewai import Task
 
 # Agents sharing the same agent_id and session_id share memory
 memory = ActroneCrewMemory(
@@ -570,11 +571,13 @@ memory = ActroneCrewMemory(
     session_id = "project-alpha",
 )
 
-agent = Agent(
-    role           = "Researcher",
-    memory         = True,
-    memory_backend = memory,
-)
+context = await memory.build_context("competitor pricing")
+task = Task(description=f"{context}\n\nSummarise competitor pricing.", agent=researcher)
+# ...crew.kickoff(), then store what the crew concluded:
+await memory.save(result, {"task_input": "Summarise competitor pricing."})
 ```
+
+The adapter feeds memory into the task text rather than replacing CrewAI's own memory storage,
+so it works the same across CrewAI versions.
 
 See the [`examples/`](../examples/) folder for fully working scripts.

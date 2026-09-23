@@ -83,6 +83,34 @@ class Embedder(ABC):
     def dimensions(self) -> int:
         """Dimensionality of the embedding vectors this provider produces."""
 
+    @property
+    def relevance_threshold(self) -> float | None:
+        """The cosine similarity at which this model's results turn from unrelated to relevant.
+
+        Used as the admission threshold when ``MemoryConfig.relevance_threshold`` is not set.
+        Override it in a custom embedder once you have measured it; the default None means the
+        library default applies.
+        """
+        return None
+
+
+# Calibrated admission thresholds for the built-in embedders, kept identical to the TypeScript
+# library. Measured on a labelled set of 48 relevant and 528 unrelated query and memory pairs
+# (2026-09-22). The lexical embedder only matches shared words, so no threshold makes it semantic:
+# 0.30 is where it still recalls about 42% of relevant memories while admitting about 7% of
+# unrelated ones. bge-small-en-v1.5 at 0.63 recalls about 88% with about 84% precision, and
+# all-MiniLM-L6-v2 at 0.40 recalls about 88% with about 91% precision. The old single default
+# (0.72) recalled 65% with bge-small, 23% with MiniLM and 4% with the lexical embedder.
+LEXICAL_RELEVANCE_THRESHOLD = 0.3
+BGE_SMALL_RELEVANCE_THRESHOLD = 0.63
+MINILM_RELEVANCE_THRESHOLD = 0.4
+
+# FastEmbedEmbedder thresholds by fastembed model id; a model not listed declares none.
+_FASTEMBED_THRESHOLDS: dict[str, float] = {
+    "BAAI/bge-small-en-v1.5": BGE_SMALL_RELEVANCE_THRESHOLD,
+    "sentence-transformers/all-MiniLM-L6-v2": MINILM_RELEVANCE_THRESHOLD,
+}
+
 
 class CachedEmbedder(Embedder):
     """Wraps any Embedder with a Redis-backed cache (default TTL: 7 days).
@@ -99,6 +127,11 @@ class CachedEmbedder(Embedder):
     @property
     def dimensions(self) -> int:
         return self._inner.dimensions
+
+    @property
+    def relevance_threshold(self) -> float | None:
+        # A cache changes nothing about the vectors, so the inner model's calibration still holds.
+        return self._inner.relevance_threshold
 
     def _cache_key(self, text: str) -> str:
         digest = hashlib.sha256(text.encode()).hexdigest()
@@ -248,6 +281,10 @@ class HashingEmbedder(Embedder):
     def dimensions(self) -> int:
         return self._dimensions
 
+    @property
+    def relevance_threshold(self) -> float | None:
+        return LEXICAL_RELEVANCE_THRESHOLD
+
     def _embed_one(self, text: str) -> list[float]:
         vec = [0.0] * self._dimensions
         for word in _WORD_RE.findall(text.lower()):
@@ -315,6 +352,11 @@ class FastEmbedEmbedder(Embedder):
     def dimensions(self) -> int:
         return self._dimensions
 
+    @property
+    def relevance_threshold(self) -> float | None:
+        # Only measured models carry a threshold; for any other, set one in MemoryConfig.
+        return _FASTEMBED_THRESHOLDS.get(self._model_name)
+
     async def embed(self, text: str) -> list[float]:
         return (await self.embed_batch([text]))[0]
 
@@ -353,6 +395,10 @@ class LocalEmbedder(Embedder):
     @property
     def dimensions(self) -> int:
         return self._DIMENSIONS
+
+    @property
+    def relevance_threshold(self) -> float | None:
+        return MINILM_RELEVANCE_THRESHOLD
 
     async def embed(self, text: str) -> list[float]:
         vectors = await self.embed_batch([text])
@@ -410,6 +456,6 @@ def build_local_embedder(
     log.warning(
         "memory.embedder.local.hashing",
         note="no local dense embedder available; using lexical hashing "
-        "(install actrone-memory[onnx] for dense recall)",
+        '(pip install "actrone-memory[onnx]" for dense recall)',
     )
     return HashingEmbedder(dimensions=hashing_dimensions)

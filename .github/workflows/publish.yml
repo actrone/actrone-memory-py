@@ -49,7 +49,7 @@ jobs:
           fi
       - name: Run CI checks before publish
         run: |
-          uv pip install --system -e ".[dev]"
+          uv pip install --system -e ".[dev,redis,qdrant,pgvector]"
           python -m pytest tests/unit/ --cov-fail-under=80 -q
           ruff check src/ tests/
           mypy src/actrone_memory --strict

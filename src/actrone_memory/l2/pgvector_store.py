@@ -34,6 +34,9 @@ _DEFAULT_TABLE = "agent_memories"
 
 # Identifiers cannot be bound as parameters, so the table name is interpolated into DDL and
 # queries. Restrict it to a conservative charset instead of trusting the caller.
+# Every `# nosec B608` marker below is on a statement whose only interpolations are identifiers
+# validated here (and, in the pgvector store, the validated integer vector width); every value
+# is a bound $n parameter. Bandit cannot see that validation, so each one is marked.
 _SAFE_IDENTIFIER = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
 
@@ -69,6 +72,10 @@ class PgVectorStore:
     ) -> None:
         self._pool = pool
         self._table = _validate_identifier(table, "table")
+        # Interpolated into the table DDL as vector(<n>), so it must be a real positive integer.
+        # bool is excluded explicitly because it is an int subclass.
+        if isinstance(dimensions, bool) or not isinstance(dimensions, int) or dimensions <= 0:
+            raise ValueError(f"dimensions must be a positive integer, got {dimensions!r}")
         self._dimensions = dimensions
         self._relevance_w = relevance_weight
         self._recency_w = recency_weight
@@ -167,7 +174,7 @@ class PgVectorStore:
                         source_turn_ids  = EXCLUDED.source_turn_ids,
                         source           = EXCLUDED.source,
                         sensitivity      = EXCLUDED.sensitivity
-                    """,
+                    """,  # nosec B608
                     entry.id,
                     entry.agent_id,
                     entry.session_id,
@@ -220,7 +227,7 @@ class PgVectorStore:
             FROM {self._table}
             WHERE agent_id = $2
               AND 1 - (embedding <=> $1::vector) >= $3
-        """
+        """  # nosec B608
         params: list[Any] = [_to_vector_literal(query_embedding), agent_id, threshold]
         if content_types:
             sql += " AND content_type = ANY($4::text[])"
@@ -282,7 +289,7 @@ class PgVectorStore:
         try:
             async with self._pool.acquire() as conn:
                 status = await conn.execute(
-                    f"DELETE FROM {self._table} WHERE id = $1",
+                    f"DELETE FROM {self._table} WHERE id = $1",  # nosec B608
                     memory_id,
                 )
         except Exception as exc:
@@ -298,7 +305,7 @@ class PgVectorStore:
         try:
             async with self._pool.acquire() as conn:
                 await conn.execute(
-                    f"DELETE FROM {self._table} WHERE agent_id = $1",
+                    f"DELETE FROM {self._table} WHERE agent_id = $1",  # nosec B608
                     agent_id,
                 )
         except Exception as exc:

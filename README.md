@@ -4,7 +4,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/actrone-memory?color=brightgreen&label=pypi)](https://pypi.org/project/actrone-memory/)
 [![Python](https://img.shields.io/pypi/pyversions/actrone-memory)](https://pypi.org/project/actrone-memory/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/actrone/actrone-memory-py/blob/main/LICENSE)
 [![codecov](https://codecov.io/gh/actrone/actrone-memory-py/branch/main/graph/badge.svg)](https://codecov.io/gh/actrone/actrone-memory-py)
 [![CI](https://github.com/actrone/actrone-memory-py/actions/workflows/ci.yml/badge.svg)](https://github.com/actrone/actrone-memory-py/actions)
 
@@ -120,10 +120,17 @@ fastembed (in-process ONNX)   →   sentence-transformers   →   lexical hashin
 ```
 
 With the bare `pip install actrone-memory` you land on the last rung: deterministic
-keyword-overlap recall, which is ideal for tests and local dev but is not semantic. Add
-`pip install "actrone-memory[onnx]"` for real semantic recall that still never leaves your
-machine, or set `ACTRONE_EMBEDDING_PROVIDER=openai` if you would rather use a cloud model
-(see [Privacy and PII](#privacy-and-pii-local-first-by-default-cloud-capable) first).
+keyword-overlap recall, which is ideal for tests and local dev but is not semantic, and the
+library says so once with a warning on stderr. Add `pip install "actrone-memory[onnx]"` for
+real semantic recall that still never leaves your machine: "food allergies" then finds "The
+user is allergic to peanuts." The first run downloads the model (about 130 MB); later runs
+load it from the cache offline. Or set `ACTRONE_EMBEDDING_PROVIDER=openai` if you would
+rather use a cloud model (see [Privacy and PII](#privacy-and-pii-local-first-by-default-cloud-capable) first).
+
+Each built-in embedder carries the similarity threshold it was calibrated for, because
+scores are not comparable across models: the lexical embedder scores relevant text around
+0.24, while bge-small scores unrelated text around 0.48. `memory.relevance_threshold` shows
+the value in use, and `ACTRONE_RELEVANCE_THRESHOLD` overrides it.
 
 ### Going to production
 
@@ -242,7 +249,7 @@ It checks the behaviours the type system cannot: turns come back oldest-first, `
 from the end, a search never returns another agent's memories, `threshold`, `limit` and
 `content_types` are honoured, an upsert replaces rather than duplicates, erasure is scoped,
 and a summary lock admits one holder. Each failure raises `ConformanceError` naming the
-requirement. `@actrone/memory/testing` is the TypeScript equivalent, against the same
+requirement. `actrone-memory/testing` is the TypeScript equivalent, against the same
 contract, so an adapter in either language is held to the same bar.
 
 The manager does not depend on those classes directly. It depends on two
@@ -434,14 +441,20 @@ graph = graph_builder.compile(checkpointer=checkpointer)
 
 ```python
 from actrone_memory.integrations.crewai import ActroneCrewMemory
-from crewai import Agent
+from crewai import Task
 
-# Each agent in the crew can remember and share findings
+# Each agent in the crew can recall and share findings
 memory = ActroneCrewMemory(agent_id="research-crew", session_id="project-alpha")
-researcher = Agent(role="Researcher", memory=True, memory_backend=memory)
+context = await memory.build_context("competitor pricing")
+task = Task(description=f"{context}\n\nSummarise competitor pricing.", agent=researcher)
+# ...crew.kickoff(), then store what the crew concluded:
+await memory.save(result, {"task_input": "Summarise competitor pricing."})
 ```
 
-Full working scripts in the [`examples/`](examples/) folder.
+The adapter feeds memory into the task text rather than replacing CrewAI's own memory
+storage, so it works the same across CrewAI versions.
+
+Full working scripts in the [`examples/`](https://github.com/actrone/actrone-memory-py/tree/main/examples) folder.
 
 ---
 
@@ -460,7 +473,8 @@ setting a single one.
 | `ACTRONE_QDRANT_URL` | `http://localhost:6333` | Where your Qdrant is running. Used only when `ACTRONE_BACKEND=redis_qdrant`. |
 | `ACTRONE_SESSION_TTL_HOURS` | `24` | How long short-term memory lasts. |
 | `ACTRONE_MAX_SESSION_TURNS` | `50` | Max messages kept in short-term memory. |
-| `ACTRONE_RELEVANCE_THRESHOLD` | `0.72` | How similar a memory must be before it is included (0 to 1). |
+| `ACTRONE_RELEVANCE_THRESHOLD` | *(calibrated)* | How similar a memory must be before it is included (0 to 1). Unset, each embedder uses its calibrated value: `0.3` lexical, `0.63` bge-small, `0.4` MiniLM, and `0.72` for OpenAI or a custom embedder. |
+| `ACTRONE_TOKEN_COUNTER` | `heuristic` | `heuristic` (about 4 characters per token, no network) or `tiktoken` (exact counts; needs `pip install "actrone-memory[tiktoken]"`, which downloads its encoding once). |
 | `ACTRONE_AUTO_SUMMARISE` | `true` | Automatically compress old conversations into long-term memory. |
 | `ACTRONE_SUMMARISE_AFTER_TURNS` | `20` | How many messages before auto-summarisation runs. |
 
@@ -470,11 +484,11 @@ setting a single one.
 
 | Page | What's in it |
 | --- | --- |
-| [Architecture deep dive](docs/architecture-deep-dive.md) | How the two-tier system works under the hood |
-| [API reference](docs/api-reference.md) | Every method, every parameter, every error |
-| [Examples and cookbook](examples/) | Copy-paste scripts for OpenAI, LangChain, and CrewAI |
-| [Contributing](CONTRIBUTING.md) | How to set up the dev environment and submit a PR |
-| [Security policy](SECURITY.md) | How to report a vulnerability privately |
+| [Architecture deep dive](https://github.com/actrone/actrone-memory-py/blob/main/docs/architecture-deep-dive.md) | How the two-tier system works under the hood |
+| [API reference](https://github.com/actrone/actrone-memory-py/blob/main/docs/api-reference.md) | Every method, every parameter, every error |
+| [Examples and cookbook](https://github.com/actrone/actrone-memory-py/tree/main/examples) | Copy-paste scripts for OpenAI, LangChain, and CrewAI |
+| [Contributing](https://github.com/actrone/actrone-memory-py/blob/main/CONTRIBUTING.md) | How to set up the dev environment and submit a PR |
+| [Security policy](https://github.com/actrone/actrone-memory-py/blob/main/SECURITY.md) | How to report a vulnerability privately |
 
 ---
 
@@ -488,4 +502,4 @@ When you're ready for **durable task execution**, **multi-model routing**, **too
 
 ## License
 
-[MIT](LICENSE). Free to use in any project, commercial or otherwise.
+[MIT](https://github.com/actrone/actrone-memory-py/blob/main/LICENSE). Free to use in any project, commercial or otherwise.

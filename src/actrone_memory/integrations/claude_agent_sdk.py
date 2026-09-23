@@ -26,7 +26,7 @@ class ActroneClaudeAgentMemory(BaseActroneMemory):
         sys_prompt = await memory.append_to_system_prompt("You are support.", user_input)
         options = ClaudeAgentOptions(system_prompt=sys_prompt)
         async for msg in query(prompt=user_input, options=options):
-...
+            ...  # collect the reply into `answer`
         await memory.remember(user_input, answer)
     """
 
