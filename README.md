@@ -2,7 +2,7 @@
 
 > **Persistent memory for AI agents, so they never forget who you are.**
 
-[![PyPI version](https://img.shields.io/pypi/v/actrone-memory?color=brightgreen&label=pypi)](https://pypi.org/project/actrone-memory/)
+[![PyPI version](https://img.shields.io/pypi/v/actrone-memory?label=pypi&color=brightgreen)](https://pypi.org/project/actrone-memory/)
 [![Python](https://img.shields.io/pypi/pyversions/actrone-memory)](https://pypi.org/project/actrone-memory/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/actrone/actrone-memory-py/blob/main/LICENSE)
 [![codecov](https://codecov.io/gh/actrone/actrone-memory-py/branch/main/graph/badge.svg)](https://codecov.io/gh/actrone/actrone-memory-py)

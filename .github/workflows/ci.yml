@@ -56,6 +56,9 @@ jobs:
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # the Codecov upload proves its identity with OIDC, so no token is stored
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # A Python of our own for `uv pip install --system`. Without it uv finds the runner's system
@@ -76,9 +79,13 @@ jobs:
             -v
       - name: Verify extracted snippets are in sync
         run: python scripts/extract_snippets.py --check
+      # Codecov rejects tokenless uploads ("Token required"), which left the README badge at
+      # "unknown". OIDC needs no stored secret. Pull requests from forks get no OIDC token, so their
+      # upload is skipped; fail_ci_if_error stays off so that never fails a contributor's CI.
       - uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0
         with:
           files: coverage.xml
+          use_oidc: true
 
   test-integration:
     name: Integration Tests
