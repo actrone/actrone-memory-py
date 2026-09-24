@@ -4,7 +4,7 @@ All notable changes to `actrone-memory` follow [Semantic Versioning](https://sem
 
 ---
 
-## [0.2.0] - 2026-09-21
+## [0.2.0] - 2026-09-25
 
 The first release published to PyPI. It includes everything built since 0.1.0, which was an internal
 milestone and was never published.
