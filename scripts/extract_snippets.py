@@ -47,10 +47,15 @@ EXAMPLE_SNIPPETS: Final[dict[str, str]] = {
 
 def extract() -> dict[str, str]:
     snippets: dict[str, str] = {}
-    # Top-level examples + the per-framework recipe sources under examples/frameworks/ (mirrors the
-    # TS examples/frameworks/ pattern), each # region block becomes a doc snippet.
+    # Top-level examples, the per-framework recipe sources under examples/frameworks/ (mirrors the
+    # TS examples/frameworks/ pattern) and the use-case pages' sources under examples/use_cases/:
+    # each # region block becomes a doc snippet.
     top_level = sorted(EXAMPLES_DIR.glob("*.py"))
-    sources = top_level + sorted((EXAMPLES_DIR / "frameworks").glob("*.py"))
+    sources = (
+        top_level
+        + sorted((EXAMPLES_DIR / "frameworks").glob("*.py"))
+        + sorted((EXAMPLES_DIR / "use_cases").glob("*.py"))
+    )
     for path in sources:
         for match in REGION.finditer(path.read_text(encoding="utf-8")):
             snippet_id, body = match.group(1), match.group(2)
@@ -61,8 +66,13 @@ def extract() -> dict[str, str]:
 
 
 def render_module(snippets: dict[str, str]) -> str:
-    """Return the generated Python module the CLI recipes import."""
-    entries = "".join(f"    {key!r}: {value!r},\n" for key, value in snippets.items())
+    """Return the generated Python module the CLI recipes import.
+
+    The use-case examples exist for the website's use-case pages only: they stay in snippets.json,
+    which the site reads, and out of this module, which ships in the wheel for the CLI.
+    """
+    shipped = {key: value for key, value in snippets.items() if "-use-case-" not in key}
+    entries = "".join(f"    {key!r}: {value!r},\n" for key, value in shipped.items())
     return MODULE_HEADER + entries + "}\n"
 
 

@@ -58,7 +58,7 @@ jobs:
         # The guide snippets and every `actrone-memory add` recipe are real example files, type-checked
         # against the installed package (which ships py.typed); an API change that breaks a documented
         # snippet or a recipe fails here.
-        run: mypy examples/quickstart.py examples/frameworks --strict --explicit-package-bases
+        run: mypy examples/quickstart.py examples/frameworks examples/use_cases --strict --explicit-package-bases
       - name: Verify extracted snippets are in sync
         run: python scripts/extract_snippets.py --check
       - uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0
