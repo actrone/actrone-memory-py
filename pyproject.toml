@@ -113,6 +113,9 @@ dev = [
     "pytest>=8.2,<9",
     "pytest-asyncio>=0.23,<1",
     "pytest-cov>=5.0,<6",
+    # CI's integration job runs with --timeout, so a test stuck on Redis or Qdrant fails instead of
+    # holding the runner until GitHub's 6-hour job limit.
+    "pytest-timeout>=2.3,<3",
     "mypy>=1.10,<2",
     "ruff>=0.4,<1",
     "testcontainers[redis,qdrant]>=4.7,<5",
