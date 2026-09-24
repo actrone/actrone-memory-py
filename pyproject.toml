@@ -161,7 +161,6 @@ exclude = [
   "/scripts",
   "/tests",
   "/dist",
-  "/Dockerfile",
   "/.pre-commit-config.yaml",
   "/.env.example",
   "/compatibility.yaml",
