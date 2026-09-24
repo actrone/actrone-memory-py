@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
-          version: "latest"
+          version: "0.11.14"  # pinned, not latest: same uv in CI and in the job that publishes
 
       # The steps below re-run a fast subset of the checks, but they cannot re-run the
       # integration tests (Redis + Qdrant services), the image scan, CodeQL or the
