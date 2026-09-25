@@ -1,23 +1,30 @@
 [project]
 name = "actrone-memory"
-version = "0.2.0"
+version = "0.2.1"
 description = "Production-grade two-tier persistent memory for AI agents: local-first by default, Redis + Qdrant for scale"
 readme = "README.md"
 license = "MIT"                    # PEP 639 SPDX expression
 license-files = ["LICENSE"]
 authors = [{ name = "Apocalypse Technologies", email = "hello@actrone.com" }]
 keywords = [
-    "ai", "agents", "memory", "langchain", "langgraph", "crewai",
-    "autogen", "llamaindex", "haystack", "dspy", "qdrant", "redis",
+    "agent-memory", "ai-agents", "memory", "long-term-memory", "semantic-search", "rag", "llm",
+    "langchain", "langgraph", "crewai", "autogen", "llamaindex", "haystack", "dspy", "agno",
+    "qdrant", "redis", "pgvector", "ai", "agents",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Framework :: AsyncIO",
+    "Framework :: Pydantic :: 2",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 requires-python = ">=3.11"
 dependencies = [

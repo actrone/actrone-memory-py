@@ -44,7 +44,7 @@ from actrone_memory.models import (
 )
 from actrone_memory.protocols import L1Store, L2Store
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = [
     "MemoryManager",
     "MemoryConfig",

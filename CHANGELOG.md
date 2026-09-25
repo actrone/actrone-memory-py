@@ -4,6 +4,16 @@ All notable changes to `actrone-memory` follow [Semantic Versioning](https://sem
 
 ---
 
+## [0.2.1] - unreleased
+
+A metadata-only release: no code changes.
+
+### Changed
+
+- **PyPI listing.** Keywords now cover what people search for (agent-memory, long-term-memory,
+  semantic-search, rag, llm, pgvector, agno), and new classifiers state that the package is typed,
+  asyncio-based, built on Pydantic 2, Python 3 only and OS independent.
+
 ## [0.2.0] - 2026-09-25
 
 The first release published to PyPI. It includes everything built since 0.1.0, which was an internal
