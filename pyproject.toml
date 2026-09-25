@@ -33,7 +33,7 @@ dependencies = [
     # redis / qdrant-client / openai are NOT base deps: the default backend is the
     # zero-service in-memory + hashing path, so `pip install actrone-memory` pulls none of them.
     # Install the `redis` / `qdrant` / `openai` extras (or `production`) for the durable backend.
-    "structlog>=24.1,<25",
+    "structlog>=24.1,<27",
     # tiktoken is not a base dep either: the default token counter is a dependency-free heuristic
     # with no network access. The `tiktoken` extra enables exact counts (token_counter="tiktoken").
     "tenacity>=8.3,<10",
