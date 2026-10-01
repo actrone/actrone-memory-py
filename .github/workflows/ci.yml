@@ -41,7 +41,7 @@ jobs:
         # The guide snippets and every `actrone-memory add` recipe are real example files, type-checked
         # against the installed package (which ships py.typed); an API change that breaks a documented
         # snippet or a recipe fails here.
-        run: mypy examples/quickstart.py examples/frameworks examples/use_cases --strict --explicit-package-bases
+        run: mypy examples/quickstart.py examples/local_extraction.py examples/frameworks examples/use_cases --strict --explicit-package-bases
       - name: bandit, static security analysis
         run: |
           uv pip install --system bandit

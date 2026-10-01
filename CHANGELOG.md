@@ -4,7 +4,7 @@ All notable changes to `actrone-memory` follow [Semantic Versioning](https://sem
 
 ---
 
-## [0.2.1] - unreleased
+## [0.2.1] - 2026-10-01
 
 Framework integration fixes found by running every integration against the real framework at the
 oldest and newest version we support, fact extraction that works on small local models, plus PyPI
