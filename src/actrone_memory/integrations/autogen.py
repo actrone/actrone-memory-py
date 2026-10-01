@@ -14,7 +14,13 @@ Usage::
     memory = ActroneAutoGenMemory(agent_id="research-agent", session_id="session-1")
     agent = AssistantAgent("researcher", memory=[memory])
 
-Requires autogen-agentchat >= 0.4 and autogen-core >= 0.4.
+Like AutoGen's own memories, ``update_context`` adds the recalled memory as a system message after
+the conversation so far. With a model outside OpenAI's catalogue (a local model through Ollama, for
+example) declare ``"multiple_system_messages": True`` in the client's ``model_info``, or AutoGen
+refuses the request.
+
+Requires autogen-agentchat >= 0.4.3 and autogen-core >= 0.4.3 (the first releases with
+``autogen_core.memory``).
 """
 
 from __future__ import annotations
@@ -113,7 +119,13 @@ class ActroneAutoGenMemory:
         """Return memories relevant to the query text."""
         from autogen_core.memory import MemoryContent, MemoryMimeType, MemoryQueryResult
 
-        query_text: str = query.text if hasattr(query, "text") else str(query)
+        # AutoGen passes a plain string or a ``MemoryContent`` (the text is in ``.content``).
+        if isinstance(query, str):
+            query_text = query
+        elif hasattr(query, "content"):
+            query_text = str(query.content)
+        else:
+            query_text = str(getattr(query, "text", query))
         n_results: int = getattr(query, "n_results", 10)
 
         mm = await self._get_manager()
@@ -135,12 +147,19 @@ class ActroneAutoGenMemory:
         return MemoryQueryResult(results=results)
 
     async def update_context(self, model_context: ChatCompletionContext) -> UpdateContextResult:
-        """Inject relevant memories into the model context as system messages.
+        """Inject relevant memories into the model context as a system message.
 
-        Called by AutoGen before each model call. Retrieves the most recent turn
-        from the context as the query, then injects top-k episodic memories.
+        Called by AutoGen before each model call. Uses the most recent message in the context as
+        the query and injects the relevant episodic memories. Returns them in AutoGen's
+        ``UpdateContextResult(memories=MemoryQueryResult(...))``, which the agent reports as a
+        memory event.
         """
-        from autogen_core.memory import UpdateContextResult
+        from autogen_core.memory import (
+            MemoryContent,
+            MemoryMimeType,
+            MemoryQueryResult,
+            UpdateContextResult,
+        )
         from autogen_core.models import SystemMessage
 
         messages = await model_context.get_messages()
@@ -154,13 +173,19 @@ class ActroneAutoGenMemory:
             self._agent_id, self._session_id, query or "context", self._token_budget
         )
 
-        injected = 0
-        if ctx.episodic_memories:
+        injected = [
+            MemoryContent(
+                content=m.content,
+                mime_type=MemoryMimeType.TEXT,
+                metadata={"memory_id": m.id, "importance_score": m.importance_score},
+            )
+            for m in ctx.episodic_memories
+        ]
+        if injected:
             memory_text = "\n".join(f"[Memory] {m.content}" for m in ctx.episodic_memories)
             await model_context.add_message(SystemMessage(content=memory_text))
-            injected += len(ctx.episodic_memories)
 
-        return UpdateContextResult(memories_added=injected)
+        return UpdateContextResult(memories=MemoryQueryResult(results=injected))
 
     async def clear(self) -> None:
         """Clear all session memory for this agent."""

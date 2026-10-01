@@ -51,3 +51,27 @@ async def test_system_message_and_add_to_chat_history() -> None:
 
     await memory.remember("q", "a")
     await mm.close()
+
+
+@pytest.mark.asyncio
+async def test_add_to_a_real_semantic_kernel_chat_history() -> None:
+    """Tier 2 with the real ``semantic_kernel.contents.ChatHistory``, as the docs wire it."""
+    pytest.importorskip("semantic_kernel", reason="semantic-kernel not installed")
+    from semantic_kernel.contents import ChatHistory
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    await mm.inject_memory("support-bot", "Tickets are answered within 24 hours.", 0.9)
+    memory = ActroneSemanticKernelMemory("support-bot", "s1", memory_manager=mm)
+
+    history = ChatHistory()
+    assert await memory.add_to_chat_history(history, "how fast are tickets answered") is True
+    history.add_user_message("What is the SLA for tickets?")
+
+    system, user = history.messages
+    assert str(system.role).lower().endswith("system")
+    assert "Tickets are answered within 24 hours." in str(system.content)
+    assert str(user.content) == "What is the SLA for tickets?"
+    # Nothing stored for this agent: nothing added, and the caller is told so.
+    empty = ActroneSemanticKernelMemory("no-memories-bot", "s1", memory_manager=mm)
+    assert await empty.add_to_chat_history(ChatHistory(), "What is the SLA for tickets?") is False
+    await mm.close()

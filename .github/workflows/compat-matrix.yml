@@ -2,10 +2,12 @@ name: Framework Compatibility
 
 # Per-repo compat verification (vendored tooling at ci/compat-matrix/). Two layers:
 #   1. drift-gate, fast, on every PR: fails if pyproject extras / README drift from compatibility.yaml.
-#   2. version-matrix, scheduled: installs each declared framework at its range boundaries (floor /
-#      current / next) in ISOLATED jobs and runs the interface canary against the REAL SDK, so an
-#      incompatibility inside our declared range is caught here, not by a user. `next` (pre/next-major)
-#      jobs are allow_fail, early warning, not a gate.
+#   2. version-matrix, scheduled (and on demand via workflow_dispatch): installs each declared framework
+#      at its range boundaries (floor / current / next) in ISOLATED jobs, together with this package in
+#      one resolver pass, and runs the interface canary plus that framework's contract tests against the
+#      REAL SDK, so the adapter's native path is exercised and an incompatibility inside our declared
+#      range is caught here, not by a user. `next` (next-major) jobs are allow_fail, early warning, not a
+#      gate, and pass with a notice when no release beyond the cap exists yet.
 #
 # Vendored from the workspace ci/compat-matrix/ into this repo (per-repo split); actrone-py mirrors this.
 
@@ -73,7 +75,7 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-      - name: canary, ${{ matrix.job.framework }} @ ${{ matrix.job.spec }}
+      - name: canary and contract tests, ${{ matrix.job.framework }} @ ${{ matrix.job.spec }}
         run: >-
           bash ci/compat-matrix/run.sh
           "${{ matrix.job.canary }}"

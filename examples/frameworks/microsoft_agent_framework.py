@@ -7,7 +7,7 @@ from actrone_memory.integrations.microsoft_agent_framework import ActroneAgentFr
 async def microsoft_agent_framework_example() -> None:
     mm = await MemoryManager.create()
     memory = ActroneAgentFrameworkMemory("support-bot", "s1", memory_manager=mm)
-    # Tier 2: ChatAgent(chat_client=client, context_providers=[memory.as_context_provider()])
+    # Tier 2: Agent(client, context_providers=[memory.as_context_provider()])
     context = await memory.build_context("who is the account owner")  # Tier 1
     _ = context
     await memory.remember("account owner?", "Jane Doe")

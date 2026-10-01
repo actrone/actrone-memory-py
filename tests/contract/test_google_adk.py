@@ -52,4 +52,49 @@ def test_as_memory_service_requires_google_adk() -> None:
         with pytest.raises(ImportError, match="google-adk"):
             memory.as_memory_service()
     else:  # pragma: no cover - only when google-adk is installed
-        pytest.skip("google-adk installed; native BaseMemoryService path covered elsewhere")
+        pytest.skip("google-adk installed; the native memory service is tested below")
+
+
+@pytest.mark.asyncio
+async def test_native_memory_service_against_real_google_adk() -> None:
+    """Real ADK types end to end: a ``Session`` of ``Event``s is stored, then searched back."""
+    pytest.importorskip("google.adk", reason="google-adk not installed")
+    from google.adk.events import Event
+    from google.adk.memory import BaseMemoryService
+    from google.adk.sessions import Session
+    from google.genai import types
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    memory = ActroneGoogleADKMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
+
+    # Instantiating also proves we implement every abstract method this ADK version declares.
+    service = memory.as_memory_service()
+    assert isinstance(service, BaseMemoryService)
+
+    session = Session(
+        id="s1",
+        app_name="support",
+        user_id="u1",
+        events=[
+            Event(
+                author="user",
+                content=types.Content(
+                    role="user", parts=[types.Part(text="When does the index rebuild run?")]
+                ),
+            ),
+            Event(
+                author="support",
+                content=types.Content(
+                    role="model", parts=[types.Part(text="The nightly index rebuild runs at 2am.")]
+                ),
+            ),
+        ],
+    )
+    await service.add_session_to_memory(session)
+
+    response = await service.search_memory(
+        app_name="support", user_id="u1", query="index rebuild schedule"
+    )
+    texts = [part.text for entry in response.memories for part in (entry.content.parts or [])]
+    assert any("2am" in (text or "") for text in texts)
+    await mm.close()

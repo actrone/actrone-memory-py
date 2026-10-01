@@ -365,19 +365,19 @@ and pulls **none** of these, nor Redis/Qdrant/OpenAI (those are the `redis`/`qdr
 | --- | --- | --- | --- |
 | LangChain | `langchain` | `>=0.2,<3` | 1 + 2 (`BaseChatMessageHistory`; `BaseMemory` on 0.x) |
 | LangGraph | `langgraph` | `>=0.1,<2` | 1 + 2 (checkpointer) |
-| CrewAI | `crewai` | `>=0.30,<2` | 1 + 2 |
-| AutoGen | `autogen` | `>=0.4,<1` | 1 + 2 (`Memory`) |
+| CrewAI | `crewai` | `>=0.95,<2` | 1 + 2 |
+| AutoGen | `autogen` | `>=0.4.3,<1` | 1 + 2 (`Memory`) |
 | LlamaIndex | `llamaindex` | `>=0.10,<2` | 1 + 2 (`Memory`) |
-| Haystack | `haystack` | `>=2.0,<3` | 1 + 2 (`@component`) |
-| DSPy | `dspy` | `>=2.4,<3` | 1 + 2 (`Retrieve`) |
-| Agno | `agno` | `>=1,<2` | 1 (`additional_context`) |
-| smolagents | `smolagents` | `>=1,<2` | 1 (task context) |
-| AWS Strands | `strands` | `>=1,<2` | 1 (system prompt) |
-| OpenAI Agents SDK | `openai_agents` | `>=0.1,<1` | 1 (instructions) |
-| Pydantic AI | `pydantic_ai` | `>=0.4,<2` | 1 (system prompt) |
+| Haystack | `haystack` | `>=2.0,<4` | 1 + 2 (`@component`) |
+| DSPy | `dspy` | `>=2.5,<4` | 1 + 2 (`Retrieve`) |
+| Agno | `agno` | `>=1.0,<4` | 1 (`additional_context`) |
+| smolagents | `smolagents` | `>=1.5.1,<2` | 1 (task context) |
+| AWS Strands | `strands` | `>=1.0,<2` | 1 (system prompt) |
+| OpenAI Agents SDK | `openai_agents` | `>=0.2,<1` | 1 (instructions) |
+| Pydantic AI | `pydantic_ai` | `>=1.32,<3` | 1 (system prompt) |
 | Claude Agent SDK | `claude_agent_sdk` | `>=0.1,<1` | 1 (system prompt) |
-| Semantic Kernel | `semantic_kernel` | `>=1.0,<2` | 1 + 2 (`ChatHistory`) |
-| Google ADK | `google_adk` | `>=1.0,<2` | 1 + 2 (`BaseMemoryService`) |
+| Semantic Kernel | `semantic_kernel` | `>=1.16,<2` | 1 + 2 (`ChatHistory`) |
+| Google ADK | `google_adk` | `>=1.2,<3` | 1 + 2 (`BaseMemoryService`) |
 | Microsoft Agent Framework | `microsoft_agent_framework` | `>=1.0,<2` | 1 + 2 (`ContextProvider`) |
 
 #### Security posture of the framework extras

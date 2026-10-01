@@ -29,7 +29,7 @@ Usage::
     # Store turns after each inference to keep the memory up to date.
     await rm.store_turn(agent_id, session_id, user_msg, assistant_msg)
 
-Requires dspy-ai >= 2.4.
+Requires dspy >= 2.5 (the ``dspy`` package; ``dspy-ai`` is now only an alias that installs it).
 """
 
 from __future__ import annotations
@@ -48,6 +48,31 @@ def _require_dspy() -> None:
         import dspy  # noqa: F401
     except ImportError as exc:
         raise ImportError("Install DSPy extras: pip install actrone-memory[dspy]") from exc
+
+
+class _Passage(str):
+    """A retrieved passage: a plain string that also exposes DSPy's ``long_text``.
+
+    ``dspy.Retrieve`` reads ``psg.long_text`` from each item the configured retriever returns, while
+    direct callers want plain strings. A ``str`` subclass serves both without converting.
+    """
+
+    @property
+    def long_text(self) -> str:
+        return str(self)
+
+
+class ActronePassages(list[_Passage]):
+    """What :meth:`ActroneRM.forward` returns: passages for ``dspy.Retrieve`` and for direct use.
+
+    As a list it is exactly what ``dspy.Retrieve`` expects from ``dspy.settings.rm`` (items with a
+    ``long_text``); ``.passages`` gives the same passages as a plain ``list[str]``, like
+    ``dspy.Prediction(passages=...)`` does.
+    """
+
+    @property
+    def passages(self) -> list[str]:
+        return [str(p) for p in self]
 
 
 def _run_async(coro: Any) -> Any:  # noqa: ANN401
@@ -115,23 +140,21 @@ class ActroneRM:
         query_or_queries: str | list[str],
         k: int | None = None,
         **_kwargs: Any,
-    ) -> Any:  # noqa: ANN401, returns dspy.Prediction
+    ) -> ActronePassages:
         """Retrieve passages for one or more queries.
 
-        Called by DSPy's ``Retrieve`` mechanism. Runs async search synchronously
-        using a thread pool to avoid event loop conflicts in both Jupyter and
-        production async contexts.
+        Called by ``dspy.Retrieve`` when this is the configured ``rm``. Runs the async search
+        synchronously, on a worker thread when an event loop is already running (Jupyter,
+        FastAPI), so it never blocks or nests a loop.
 
         Args:
             query_or_queries: A single query string or a list of query strings.
             k: Number of passages per query. Defaults to ``self.k``.
 
         Returns:
-            ``dspy.Prediction(passages=[...])`` where passages is a flat list
-            of content strings from Qdrant L2.
+            :class:`ActronePassages`: the ranked passages, which ``dspy.Retrieve`` consumes directly
+            and whose ``.passages`` is a plain ``list[str]``.
         """
-        import dspy
-
         num = k if k is not None else self.k
 
         if isinstance(query_or_queries, str):
@@ -156,14 +179,14 @@ class ActroneRM:
                 if pi < len(per_query[qi])
             ]
 
-        return dspy.Prediction(passages=passages)
+        return ActronePassages(_Passage(p) for p in passages)
 
     def __call__(
         self,
         query_or_queries: str | list[str],
         k: int | None = None,
         **kwargs: Any,
-    ) -> Any:  # noqa: ANN401
+    ) -> ActronePassages:
         """Allow direct calls: ``rm("my query")``."""
         return self.forward(query_or_queries, k=k, **kwargs)
 

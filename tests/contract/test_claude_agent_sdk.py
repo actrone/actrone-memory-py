@@ -28,3 +28,23 @@ async def test_append_to_system_prompt_appends_memory_and_passes_through_when_em
 
     await memory.remember("q", "a")
     await mm.close()
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_lands_on_real_claude_agent_options() -> None:
+    """The documented wiring: query(prompt=..., options=ClaudeAgentOptions(system_prompt=...)).
+
+    ``query`` itself starts the Claude Code CLI, so it is not run here; the options it is given are.
+    """
+    pytest.importorskip("claude_agent_sdk", reason="claude-agent-sdk not installed")
+    from claude_agent_sdk import ClaudeAgentOptions
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    await mm.inject_memory("support-bot", "Refunds over 500 need manager approval.", 0.9)
+    memory = ActroneClaudeAgentMemory("support-bot", "s1", memory_manager=mm)
+    system_prompt = await memory.append_to_system_prompt("You are support.", "refunds policy")
+
+    options = ClaudeAgentOptions(system_prompt=system_prompt)
+    assert options.system_prompt == system_prompt
+    assert "Refunds over 500 need manager approval." in str(options.system_prompt)
+    await mm.close()

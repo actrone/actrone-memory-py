@@ -18,10 +18,13 @@ from actrone_memory.exceptions import (
     ValidationError,
 )
 from actrone_memory.extraction import (
+    EXTRACTION_RESPONSE_SCHEMA,
     EXTRACTION_SPEC_VERSION,
+    EXTRACTION_SYSTEM_PROMPT,
     ExtractedFact,
     FactExtractor,
     OpenAIFactExtractor,
+    format_extraction_input,
     parse_facts,
 )
 from actrone_memory.in_memory import InMemoryStore, cosine_similarity
@@ -63,7 +66,10 @@ __all__ = [
     "FactExtractor",
     "OpenAIFactExtractor",
     "parse_facts",
+    "format_extraction_input",
     "EXTRACTION_SPEC_VERSION",
+    "EXTRACTION_SYSTEM_PROMPT",
+    "EXTRACTION_RESPONSE_SCHEMA",
     "Embedder",
     "HashingEmbedder",
     "LocalEmbedder",

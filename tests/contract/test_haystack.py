@@ -123,3 +123,60 @@ def test_import_error_without_haystack() -> None:
         ImportError, match=r"pip install actrone-memory\[haystack\]"
     ):
         ActroneWriter(agent_id="agent-1")
+
+
+# ── Inside a real Haystack pipeline ───────────────────────────────────────────────────────────────
+
+
+def test_components_are_real_haystack_components_accepted_by_a_pipeline() -> None:
+    from haystack import Pipeline
+
+    retriever = ActroneRetriever(agent_id="agent-1", memory_manager=AsyncMock())
+    writer = ActroneWriter(agent_id="agent-1", memory_manager=AsyncMock())
+    assert isinstance(retriever, ActroneRetriever) and isinstance(writer, ActroneWriter)
+    pipeline = Pipeline()
+    pipeline.add_component("memory", retriever)  # rejects anything not built with @component
+    pipeline.add_component("writer", writer)
+
+
+def test_retriever_runs_in_a_pipeline_and_returns_documents() -> None:
+    import asyncio
+
+    from haystack import Pipeline
+    from haystack.dataclasses import Document
+
+    from actrone_memory.config import MemoryConfig
+    from actrone_memory.manager import MemoryManager
+
+    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))  # type: ignore[call-arg]
+    asyncio.run(mm.inject_memory("agent-1", "The nightly index rebuild runs at 2am.", 0.9))
+    pipeline = Pipeline()
+    pipeline.add_component("memory", ActroneRetriever(agent_id="agent-1", memory_manager=mm))
+
+    documents = pipeline.run({"memory": {"query": "index rebuild"}})["memory"]["documents"]
+    assert documents and all(isinstance(d, Document) for d in documents)
+    assert documents[0].content == "The nightly index rebuild runs at 2am."
+
+
+def test_writer_runs_in_a_pipeline_and_stores_the_turn() -> None:
+    import asyncio
+
+    from haystack import Pipeline
+
+    from actrone_memory.config import MemoryConfig
+    from actrone_memory.manager import MemoryManager
+
+    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))  # type: ignore[call-arg]
+    pipeline = Pipeline()
+    pipeline.add_component(
+        "writer", ActroneWriter(agent_id="agent-1", session_id="s1", memory_manager=mm)
+    )
+
+    out = pipeline.run(
+        {"writer": {"user_message": "When is the rebuild?", "assistant_message": "Nightly at 2am."}}
+    )
+    assert out == {"writer": {"memories_written": 1}}
+    turns = asyncio.run(mm.get_recent_turns("agent-1", "s1"))
+    assert [(t.user_message, t.assistant_message) for t in turns] == [
+        ("When is the rebuild?", "Nightly at 2am.")
+    ]

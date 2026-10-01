@@ -17,6 +17,7 @@ import pytest
 langchain_core = pytest.importorskip("langchain_core", reason="langchain-core not installed")
 
 import importlib.util
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from actrone_memory.integrations.langchain import ActroneChatMessageHistory, ActroneMemory
@@ -252,3 +253,52 @@ def test_chat_history_sync_messages_property_points_at_async(
 ) -> None:
     with pytest.raises(NotImplementedError, match="aget_messages"):
         _ = history.messages
+
+
+# ── Inside LangChain's real runtime ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_chat_history_works_inside_runnable_with_message_history() -> None:
+    """The documented wiring, end to end: history reaches the model and each exchange is stored."""
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+    from langchain_core.runnables import RunnableLambda
+    from langchain_core.runnables.history import RunnableWithMessageHistory
+
+    from actrone_memory.config import MemoryConfig
+    from actrone_memory.manager import MemoryManager
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    history = ActroneChatMessageHistory("support-bot", "s1", memory_manager=mm)
+    seen: list[list[str]] = []
+
+    def capture(prompt: Any) -> Any:
+        seen.append([str(m.content) for m in prompt.to_messages()])
+        return prompt
+
+    prompt = ChatPromptTemplate.from_messages(
+        [MessagesPlaceholder("history"), ("human", "{input}")]
+    )
+    model = FakeListChatModel(responses=["Two approvals.", "Yes, on Fridays too."])
+    chain = RunnableWithMessageHistory(
+        prompt | RunnableLambda(capture) | model,
+        lambda _session_id: history,  # type: ignore[arg-type,return-value]
+        input_messages_key="input",
+        history_messages_key="history",
+    )
+    config = {"configurable": {"session_id": "s1"}}
+
+    first = await chain.ainvoke({"input": "How many approvals does a deploy need?"}, config)
+    assert first.content == "Two approvals."
+    second = await chain.ainvoke({"input": "Even on Fridays?"}, config)
+    assert second.content == "Yes, on Fridays too."
+
+    # The second call's prompt carried the first exchange back from actrone-memory.
+    assert seen[1][:2] == ["How many approvals does a deploy need?", "Two approvals."]
+    turns = await mm.get_recent_turns("support-bot", "s1")
+    assert [(t.user_message, t.assistant_message) for t in turns] == [
+        ("How many approvals does a deploy need?", "Two approvals."),
+        ("Even on Fridays?", "Yes, on Fridays too."),
+    ]
+    await mm.close()

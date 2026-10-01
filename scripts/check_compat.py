@@ -56,6 +56,38 @@ def _pkg_name(spec: str) -> str:
     return re.split(r"[<>=!~ \[]", spec, maxsplit=1)[0]
 
 
+def _version_key(version: str) -> tuple[int, ...]:
+    """Numeric sort key for a plain release version (``0.4.2`` → ``(0, 4, 2)``)."""
+    return tuple(int(part) for part in re.findall(r"\d+", version))
+
+
+def _matrix_errors(name: str, fw: dict[str, Any], floor: str, cap: str) -> list[str]:
+    """Rules that keep the compat-matrix job meaningful, caught here on every PR, not weekly.
+
+    - ``contract`` must name at least one symbol: with none, the job selects zero tests and fails
+      with pytest's opaque "no tests collected" (exit 5).
+    - ``matrix.floor`` must be the declared floor (the job pins it with ``==``).
+    - ``matrix.next`` must sit at or beyond ``cap``: a ``next`` inside the range only re-tests
+      ``current`` and never warns about the next major.
+    """
+    errors: list[str] = []
+    if not fw.get("contract"):
+        errors.append(
+            f"[{name}] no contract symbols, so its compat-matrix canary would test nothing"
+        )
+    matrix = fw.get("matrix") or {}
+    pinned_floor = str(matrix.get("floor", ""))
+    if _version_key(pinned_floor)[: len(_version_key(floor))] != _version_key(floor):
+        errors.append(f"[{name}] matrix.floor {pinned_floor!r} is not the declared floor {floor!r}")
+    next_version = str(matrix.get("next", ""))
+    if next_version and _version_key(next_version) < _version_key(cap):
+        errors.append(
+            f"[{name}] matrix.next {next_version!r} is inside the supported range (<{cap}); "
+            f"set it to {cap!r} or later so the job tests the next major"
+        )
+    return errors
+
+
 def check_against(
     manifest: dict[str, Any],
     extras: dict[str, list[str]],
@@ -93,11 +125,20 @@ def check_against(
                     f"[{name}] '{by_pkg[pkg]}' (>={low},<{up}) != manifest (>={floor},<{cap})"
                 )
 
-        # 2. README compatibility matrix ↔ manifest
-        if f"`{extra}`" not in readme:
+        # 2. README compatibility matrix ↔ manifest. The range is checked in the framework's OWN
+        # row: anywhere in the file let one row's range (`>=1.0,<2`) vouch for another's.
+        rows = [
+            line for line in readme.splitlines() if line.startswith("|") and f"`{extra}`" in line
+        ]
+        if not rows:
             errors.append(f"[{name}] README has no compat-matrix row for extra `{extra}`")
-        if readme_shows_ranges and f">={floor},<{cap}" not in readme:
-            errors.append(f"[{name}] README missing the range `>={floor},<{cap}` for {extra}")
+        elif readme_shows_ranges and not any(f">={floor},<{cap}" in row for row in rows):
+            errors.append(
+                f"[{name}] README row for `{extra}` does not show the range `>={floor},<{cap}`"
+            )
+
+        # 3. the version-matrix job for this framework can actually test something
+        errors.extend(_matrix_errors(name, fw, floor, cap))
 
     # reverse: no undocumented framework extras
     known = {fw["extra"] for fw in frameworks.values()} | non_framework

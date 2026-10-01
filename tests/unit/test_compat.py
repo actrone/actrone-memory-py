@@ -38,7 +38,9 @@ _MANIFEST: dict[str, Any] = {
             "packages": ["demo-pkg"],
             "floor": "1.0",
             "cap": "2",
+            "matrix": {"floor": "1.0.0", "current": "1.5", "next": "2.0"},
             "readme": "Demo",
+            "contract": ["demo:Agent"],
         }
     },
     "non_framework_extras": ["dev"],
@@ -84,3 +86,30 @@ def test_readme_ranges_optional_for_sdk_style_matrix() -> None:
         check_compat.check_against(_MANIFEST, extras, readme_no_range, readme_shows_ranges=False)
         == []
     )
+
+
+def _with(**changes: Any) -> dict[str, Any]:
+    """The synthetic manifest with the demo framework's fields replaced."""
+    return {**_MANIFEST, "frameworks": {"demo": {**_MANIFEST["frameworks"]["demo"], **changes}}}
+
+
+def test_catches_framework_without_contract() -> None:
+    # With no contract symbols the compat-matrix job selects zero tests (pytest exit 5).
+    extras = {"demo": ["demo-pkg>=1.0,<2"]}
+    errors = check_compat.check_against(_with(contract=[]), extras, _README_OK)
+    assert any("no contract symbols" in e for e in errors)
+
+
+def test_catches_matrix_floor_that_is_not_the_declared_floor() -> None:
+    extras = {"demo": ["demo-pkg>=1.0,<2"]}
+    manifest = _with(matrix={"floor": "0.9.0", "current": "1.5", "next": "2.0"})
+    errors = check_compat.check_against(manifest, extras, _README_OK)
+    assert any("matrix.floor" in e for e in errors)
+
+
+def test_catches_next_inside_the_supported_range() -> None:
+    # A `next` below the cap only re-tests `current` and never warns about the next major.
+    extras = {"demo": ["demo-pkg>=1.0,<2"]}
+    manifest = _with(matrix={"floor": "1.0.0", "current": "1.5", "next": "1.8"})
+    errors = check_compat.check_against(manifest, extras, _README_OK)
+    assert any("matrix.next" in e for e in errors)

@@ -12,9 +12,12 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore"
+    # Minor and patch bumps batch into one PR. A major version of an action can change its
+    # runtime or inputs, so each one arrives as its own PR instead of sinking the whole batch.
     groups:
       actions:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: pip
     directory: "/"
@@ -22,10 +25,31 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore"
-    # Runtime dependencies are reviewed one by one: this package is a library, so a
-    # bump here lands in every consumer's resolution. Dev tooling can move as a batch.
+    # Only the test, lint and docs tooling is batched, and only for minor and patch bumps.
+    # The group is an explicit allowlist rather than `dependency-type: development` because
+    # Dependabot counts every `[project.optional-dependencies]` entry as development, which
+    # swept the framework extras (redis, openai, haystack, dspy, ...) into a tooling PR. Those
+    # extras land in consumers' resolutions, so each one arrives as its own PR, and any range
+    # widening there also has to update compatibility.yaml or the drift gate fails.
     groups:
-      dev-dependencies:
-        dependency-type: development
-        patterns: ["*"]
+      dev-tooling:
+        patterns:
+          - "pytest"
+          - "pytest-*"
+          - "mypy"
+          - "ruff"
+          - "bandit"
+          - "testcontainers"
+          - "httpx"
+          - "respx"
+          - "pyyaml"
+          - "sphinx"
+          - "furo"
+        update-types: ["minor", "patch"]
+    ignore:
+      # Held below 9 on purpose (see the `dev` extra in pyproject.toml): every
+      # pytest-asyncio release from 0.24 on declares `pytest<9`. Remove this entry once
+      # pytest-asyncio supports pytest 9.
+      - dependency-name: "pytest"
+        versions: [">=9"]
     open-pull-requests-limit: 5

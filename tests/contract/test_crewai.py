@@ -5,7 +5,9 @@ Run with: pip install actrone-memory[crewai] && pytest tests/contract/test_crewa
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -100,3 +102,89 @@ def test_import_error_without_crewai() -> None:
         ImportError, match=r"pip install actrone-memory\[crewai\]"
     ):
         ActroneCrewMemory(agent_id="agent-1", session_id="default")
+
+
+# ── Inside CrewAI's real runtime ──────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def offline_crewai(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep CrewAI offline: a placeholder key for agent construction, no telemetry."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-offline")
+    monkeypatch.setenv("CREWAI_DISABLE_TELEMETRY", "true")
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("offline_crewai")
+async def test_context_reaches_a_real_task_and_the_result_is_saved() -> None:
+    """The documented wiring: Task(description=context + user_input, agent=agent), then save."""
+    from crewai import Agent, Task
+
+    from actrone_memory.config import MemoryConfig
+    from actrone_memory.manager import MemoryManager
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
+    memory = ActroneCrewMemory("support-bot", "s1", memory_manager=mm)
+
+    user_input = "How many approvals does a deploy need?"
+    context = await memory.build_context("deploy approvals")
+    agent = Agent(role="support", goal="Answer deployment questions", backstory="Release manager")
+    task = Task(description=f"{context}\n\n{user_input}", expected_output="A number", agent=agent)
+    assert "Deploys need two approvals." in task.description and user_input in task.description
+
+    await memory.save("Two approvals.", {"task_input": user_input})
+    turns = await mm.get_recent_turns("support-bot", "s1")
+    assert [(t.user_message, t.assistant_message) for t in turns] == [
+        (user_input, "Two approvals.")
+    ]
+    await mm.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("offline_crewai")
+async def test_memory_reaches_the_model_in_a_real_crew_kickoff() -> None:
+    """A whole crew run with an offline stub LLM (CrewAI's BaseLLM; older CrewAI lacks it)."""
+    try:
+        from crewai.llms.base_llm import BaseLLM
+    except ImportError:
+        pytest.skip(
+            "this CrewAI version has no BaseLLM for an offline model; construction is tested above"
+        )
+    from crewai import Agent, Crew, Task
+
+    from actrone_memory.config import MemoryConfig
+    from actrone_memory.manager import MemoryManager
+
+    seen: list[str] = []
+
+    class _StubLLM(BaseLLM):  # type: ignore[misc]
+        def call(self, messages: Any, *_: Any, **__: Any) -> str:
+            seen.append(
+                messages
+                if isinstance(messages, str)
+                else " ".join(str(m.get("content", "")) for m in messages)
+            )
+            return "Thought: I know the answer.\nFinal Answer: Two approvals."
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
+    memory = ActroneCrewMemory("support-bot", "s1", memory_manager=mm)
+
+    user_input = "How many approvals does a deploy need?"
+    context = await memory.build_context("deploy approvals")
+    agent = Agent(
+        role="support",
+        goal="Answer deployment questions",
+        backstory="Release manager",
+        llm=_StubLLM(model="stub"),
+    )
+    task = Task(description=f"{context}\n\n{user_input}", expected_output="A number", agent=agent)
+    result = await asyncio.to_thread(Crew(agents=[agent], tasks=[task]).kickoff)
+
+    assert "Two approvals." in str(result)
+    assert any("Deploys need two approvals." in prompt for prompt in seen)
+    await memory.save(str(result), {"task_input": user_input})
+    assert (await mm.get_recent_turns("support-bot", "s1"))[0].user_message == user_input
+    await mm.close()

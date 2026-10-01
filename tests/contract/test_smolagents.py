@@ -27,3 +27,24 @@ async def test_task_context_prepends_memory_block_and_empty_when_none() -> None:
 
     await memory.remember("q", "a")
     await mm.close()
+
+
+@pytest.mark.asyncio
+async def test_task_context_prefixes_a_task_for_a_real_code_agent() -> None:
+    """The documented wiring: task = task_context(user_input) + user_input, then agent.run(task)."""
+    pytest.importorskip("smolagents", reason="smolagents not installed")
+    import inspect
+
+    from smolagents import CodeAgent
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    await mm.inject_memory("support-bot", "The build server is named atlas.", 0.9)
+    memory = ActroneSmolagentsMemory("support-bot", "s1", memory_manager=mm)
+    user_input = "what is the build server named?"
+    task = await memory.task_context(user_input) + user_input
+    assert "The build server is named atlas." in task and task.endswith(user_input)
+
+    # The agent API the docs call: CodeAgent(tools=..., model=...).run(task).
+    assert "task" in inspect.signature(CodeAgent.run).parameters
+    assert {"tools", "model"} <= set(inspect.signature(CodeAgent.__init__).parameters)
+    await mm.close()

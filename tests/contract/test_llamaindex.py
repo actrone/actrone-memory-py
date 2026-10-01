@@ -5,6 +5,8 @@ Run with: pip install actrone-memory[llamaindex] && pytest tests/contract/test_l
 """
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 llama_index = pytest.importorskip("llama_index", reason="llama-index-core not installed")
@@ -109,3 +111,72 @@ def test_import_error_without_llamaindex() -> None:
         ImportError, match=r"pip install actrone-memory\[llamaindex\]"
     ):
         ActroneLlamaMemory(agent_id="agent-1")
+
+
+def _mock_llm_class() -> Any:
+    """LlamaIndex's echoing test LLM; it moved from ``llms.mock`` to ``llms`` after 0.10."""
+    try:
+        from llama_index.core.llms import MockLLM
+    except ImportError:
+        from llama_index.core.llms.mock import MockLLM
+    return MockLLM
+
+
+# ── Inside LlamaIndex's real chat engine ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_memory_works_inside_a_real_simple_chat_engine() -> None:
+    """The documented wiring end to end. MockLLM echoes its prompt, showing what the model got."""
+    from llama_index.core.chat_engine import SimpleChatEngine
+
+    mock_llm = _mock_llm_class()
+
+    from actrone_memory.config import MemoryConfig
+    from actrone_memory.manager import MemoryManager
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
+    memory = ActroneLlamaMemory("support-bot", "s1", memory_manager=mm)
+    engine = SimpleChatEngine.from_defaults(llm=mock_llm(), memory=memory)
+
+    first = str(await engine.achat("How many approvals does a deploy need?"))
+    # The model received the recalled memory AND the question being asked.
+    assert "Deploys need two approvals." in first
+    assert "How many approvals does a deploy need?" in first
+
+    second = str(await engine.achat("Even on Fridays?"))
+    # The second prompt carries the first exchange back from actrone-memory, then the new question.
+    assert "How many approvals does a deploy need?" in second
+    assert second.rstrip().endswith("user: Even on Fridays?\nassistant:")
+
+    turns = await mm.get_recent_turns("support-bot", "s1")
+    assert [t.user_message for t in turns] == [
+        "How many approvals does a deploy need?",
+        "Even on Fridays?",
+    ]
+    await mm.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_history_passed_to_the_engine_replaces_the_session() -> None:
+    from llama_index.core.base.llms.types import ChatMessage, MessageRole
+    from llama_index.core.chat_engine import SimpleChatEngine
+
+    mock_llm = _mock_llm_class()
+
+    from actrone_memory.config import MemoryConfig
+    from actrone_memory.manager import MemoryManager
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    memory = ActroneLlamaMemory("support-bot", "s2", memory_manager=mm)
+    engine = SimpleChatEngine.from_defaults(llm=mock_llm(), memory=memory)
+    history = [
+        ChatMessage(role=MessageRole.USER, content="What is the build server called?"),
+        ChatMessage(role=MessageRole.ASSISTANT, content="It is called atlas."),
+    ]
+    reply = str(await engine.achat("Where does it run?", chat_history=history))
+    assert "It is called atlas." in reply and "Where does it run?" in reply
+    turns = await mm.get_recent_turns("support-bot", "s2")
+    assert turns[0].user_message == "What is the build server called?"
+    await mm.close()

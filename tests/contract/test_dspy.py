@@ -1,13 +1,13 @@
 """Contract tests for the DSPy Retrieve adapter.
 
-Skipped automatically when dspy-ai is not installed.
+Skipped automatically when dspy is not installed.
 Run with: pip install actrone-memory[dspy] && pytest tests/contract/test_dspy.py
 """
 from __future__ import annotations
 
 import pytest
 
-dspy = pytest.importorskip("dspy", reason="dspy-ai not installed")
+dspy = pytest.importorskip("dspy", reason="dspy not installed")
 
 from unittest.mock import AsyncMock, patch
 
@@ -112,3 +112,27 @@ def test_import_error_without_dspy() -> None:
         ImportError, match=r"pip install actrone-memory\[dspy\]"
     ):
         ActroneRM(agent_id="agent-1")
+
+
+# ── Inside DSPy's real runtime ────────────────────────────────────────────────────────────────────
+
+
+def test_configured_rm_works_through_dspy_retrieve() -> None:
+    """The documented wiring end to end: ActroneRM as DSPy's configured rm, then dspy.Retrieve."""
+    import asyncio
+
+    from actrone_memory.config import MemoryConfig
+    from actrone_memory.manager import MemoryManager
+
+    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))  # type: ignore[call-arg]
+    asyncio.run(mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9))
+    rm = ActroneRM("support-bot", k=3, memory_manager=mm)
+
+    with dspy.settings.context(rm=rm):
+        result = dspy.Retrieve(k=3)("How many approvals does a deploy need?")
+    assert list(result.passages) == ["Deploys need two approvals."]
+
+    # Direct use, as a module's retriever, gives the same passages as plain strings.
+    direct = rm("How many approvals does a deploy need?")
+    assert direct.passages == ["Deploys need two approvals."]
+    assert all(type(p) is str for p in direct.passages)

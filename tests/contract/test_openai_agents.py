@@ -31,3 +31,22 @@ async def test_instructions_for_prepends_memory_and_passes_through_when_empty() 
     turn_id = await memory.remember("q", "a")
     assert turn_id
     await mm.close()
+
+
+@pytest.mark.asyncio
+async def test_instructions_become_a_real_agents_system_prompt() -> None:
+    """The documented wiring: Agent(name=..., instructions=...); the SDK renders the prompt."""
+    pytest.importorskip("agents", reason="openai-agents not installed")
+    from agents import Agent, RunContextWrapper
+
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    await mm.inject_memory("support-bot", "The customer is on the enterprise plan.", 0.9)
+    memory = ActroneOpenAIAgentsMemory("support-bot", "s1", memory_manager=mm)
+    instructions = await memory.instructions_for("You are support.", "enterprise plan")
+
+    agent = Agent(name="support", instructions=instructions)
+    # The SDK's own renderer, which Runner.run uses for the model call (it also builds the run
+    # context, so an SDK incompatible with the installed openai library fails here).
+    prompt = await agent.get_system_prompt(RunContextWrapper(context=None))
+    assert prompt == instructions and "The customer is on the enterprise plan." in str(prompt)
+    await mm.close()

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from actrone_memory.config import MemoryConfig
@@ -48,6 +49,17 @@ def _run_sync(coro: Any) -> Any:  # noqa: ANN401
             return pool.submit(asyncio.run, coro).result()
     except RuntimeError:
         return asyncio.run(coro)
+
+
+def _llamaindex_tokenizer() -> Callable[[str], list[Any]]:
+    """LlamaIndex's default tokenizer, or whitespace splitting if it cannot be loaded offline."""
+    try:
+        from llama_index.core.utils import get_tokenizer
+
+        tokenizer: Callable[[str], list[Any]] = get_tokenizer()
+        return tokenizer
+    except (ImportError, OSError):  # no tokenizer module, or its data cannot be fetched offline
+        return str.split
 
 
 def _require_llamaindex() -> None:
@@ -91,6 +103,11 @@ class ActroneLlamaMemory:
         # Buffer for the current turn being assembled (mirrors LlamaIndex's pattern).
         self._pending_user_msg: str = ""
 
+        # LlamaIndex chat engines count prompt tokens with ``memory.tokenizer_fn``; 0.10 reads it
+        # unconditionally, so without it every chat crashed. Use LlamaIndex's own tokenizer so the
+        # counts match the framework's.
+        self.tokenizer_fn: Callable[[str], list[Any]] = _llamaindex_tokenizer()
+
     async def _get_manager(self) -> MemoryManager:
         if self._mm is None:
             self._mm = await MemoryManager.create(self._config)
@@ -116,9 +133,12 @@ class ActroneLlamaMemory:
         initial_token_count: int = 0,
         **kwargs: Any,
     ) -> list[ChatMessage]:
-        """Return recent conversation turns + episodic memories as ChatMessages.
+        """The conversation for the next LLM call: memories, recent turns, then the new message.
 
-        Called by LlamaIndex before each LLM call to build the message list.
+        LlamaIndex chat engines ``aput`` the user's message first and then call ``aget`` with no
+        ``input`` to build the prompt, relying on the memory to return the whole conversation. So
+        the pending (not yet answered) user message is both the recall query and the last message
+        returned; without it the model would receive neither the memories nor the question.
         """
         from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
@@ -126,7 +146,7 @@ class ActroneLlamaMemory:
         ctx = await mm.retrieve_context(
             self._agent_id,
             self._session_id,
-            input or "",
+            input or self._pending_user_msg,
             self._token_budget - initial_token_count,
         )
 
@@ -146,6 +166,10 @@ class ActroneLlamaMemory:
         for turn in ctx.recent_turns:
             messages.append(ChatMessage(role=MessageRole.USER, content=turn.user_message))
             messages.append(ChatMessage(role=MessageRole.ASSISTANT, content=turn.assistant_message))
+
+        # The message being answered now: put, but not yet a stored turn.
+        if self._pending_user_msg:
+            messages.append(ChatMessage(role=MessageRole.USER, content=self._pending_user_msg))
 
         return messages
 
@@ -180,6 +204,20 @@ class ActroneLlamaMemory:
 
     def put(self, message: ChatMessage) -> None:
         _run_sync(self.aput(message))
+
+    async def aset(self, messages: list[ChatMessage]) -> None:
+        """Replace the session's conversation with ``messages``.
+
+        Chat engines call this when a caller passes ``chat_history``. The session is cleared, each
+        user message is paired with the assistant reply that follows it, and a trailing user
+        message stays pending for the next reply.
+        """
+        await self.areset()
+        for message in messages:
+            await self.aput(message)
+
+    def set(self, messages: list[ChatMessage]) -> None:
+        _run_sync(self.aset(messages))
 
     async def areset(self) -> None:
         """Clear all memory for this agent/session."""

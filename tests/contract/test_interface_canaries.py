@@ -10,7 +10,9 @@ changed" rather than a confusing downstream error, the machine version of a "ver
 from __future__ import annotations
 
 import importlib
+import inspect
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -35,9 +37,38 @@ _CONTRACTS = [
 ]
 
 
+# A contract entry is `module:Symbol`, optionally with the keyword parameters our docs tell users to
+# pass: `agno.agent:Agent(additional_context)`. A renamed parameter breaks users as surely as a
+# removed class, so the parameters are asserted against the callable's real signature too.
+_ENTRY = re.compile(r"^(?P<symbol>[^()]+?)(?:\((?P<params>[^)]*)\))?$")
+
+
+def _assert_accepts(framework: str, ref: str, obj: object, params: list[str]) -> None:
+    """Fail unless ``obj`` (a class or function) accepts every keyword parameter in ``params``."""
+    try:
+        signature = inspect.signature(obj)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        pytest.fail(f"{framework}: cannot read the signature of {ref} to check {params} ({exc})")
+    accepted = signature.parameters
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in accepted.values()):
+        return  # takes **kwargs: the names cannot be checked statically, and nothing is rejected
+    missing = [name for name in params if name not in accepted]
+    assert not missing, (
+        f"{framework}: {ref} no longer accepts {missing}; the documented wiring changed "
+        f"(update the example, the adapter docs and compatibility.yaml). Accepts: {list(accepted)}"
+    )
+
+
 @pytest.mark.parametrize(("framework", "ref"), _CONTRACTS, ids=[f"{n}:{r}" for n, r in _CONTRACTS])
 def test_framework_contract_symbol_exists(framework: str, ref: str) -> None:
-    module_name, _, symbol = ref.partition(":")
+    module_name, _, spec = ref.partition(":")
+    entry = _ENTRY.match(spec)
+    assert entry, (
+        f"{framework}: malformed contract entry {ref!r} "
+        "(expected module:Symbol or module:Symbol(a, b))"
+    )
+    symbol = entry["symbol"].strip()
+    params = [p.strip() for p in (entry["params"] or "").split(",") if p.strip()]
     # Skip ONLY when the framework itself isn't installed (top-level package absent). If it IS
     # installed but our specific sub-module/symbol is gone, that's a genuine FAILURE, the version
     # is in our declared range yet the interface we bind to no longer exists. `google` is a shared
@@ -60,8 +91,18 @@ def test_framework_contract_symbol_exists(framework: str, ref: str) -> None:
             f"interface changed (update the adapter + compatibility.yaml)."
         )
         obj = getattr(obj, attr)
+    if params:
+        _assert_accepts(framework, ref, obj, params)
 
 
 def test_at_least_one_contract_declared() -> None:
     # Guards against an empty/renamed manifest silently disabling every canary.
     assert _CONTRACTS, "no contract symbols in compatibility.yaml"
+
+
+def test_every_framework_declares_a_contract() -> None:
+    # A framework with no contract has no canary, so its compat-matrix job selects zero tests and
+    # fails with pytest's "no tests collected" (exit 5) instead of saying what is wrong. Name the
+    # gap here.
+    empty = [name for name, fw in _MANIFEST["frameworks"].items() if not fw.get("contract")]
+    assert not empty, f"compatibility.yaml frameworks with no contract symbols: {empty}"

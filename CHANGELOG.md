@@ -6,10 +6,58 @@ All notable changes to `actrone-memory` follow [Semantic Versioning](https://sem
 
 ## [0.2.1] - unreleased
 
-A metadata-only release: no code changes.
+Framework integration fixes found by running every integration against the real framework at the
+oldest and newest version we support, fact extraction that works on small local models, plus PyPI
+listing updates.
+
+### Fixed
+
+- **Fact extraction returned nothing on small models.** With `qwen2.5:3b` on Ollama, extraction
+  came back empty on 12 of 15 real exchanges, because the model read the assistant's reply as part
+  of what to mine. Extraction spec 1.1 frames the conversation, says whose facts to record, asks
+  for a JSON-schema structured output and gives two worked examples (one with facts, one with
+  none). On the same model it found 14 of 14 expected facts and stored nothing for small talk.
+  `EXTRACTION_SPEC_VERSION` is now `"1.1"`; the prompt, `EXTRACTION_RESPONSE_SCHEMA` and
+  `format_extraction_input` are exported for custom extractors.
+- **Microsoft Agent Framework.** The adapter targeted the pre-1.0 API (`ChatAgent`,
+  `ContextProvider.invoking`, `Context`), which Agent Framework 1.x removed. It now implements the
+  1.x `ContextProvider` (`before_run` adds the recalled context through
+  `context.extend_instructions`, `after_run` saves the turn from the response), so
+  `Agent(client, context_providers=[memory.as_context_provider()])` works.
+- **LangGraph.** `ActroneCheckpointer` was a plain class, so `graph.compile(checkpointer=...)`
+  rejected it. It is now a real `BaseCheckpointSaver` that wraps a saver of your choice
+  (`saver=`, an in-memory saver by default) for graph state and also records each completed
+  human and AI exchange as memory, once per exchange.
+- **Haystack.** `ActroneRetriever` and `ActroneWriter` were not registered Haystack components,
+  so `Pipeline.add_component` refused them. They are now real `@component` classes with declared
+  inputs and outputs, and support both `run` and `run_async`.
+- **LlamaIndex.** `ActroneLlamaMemory` now recalls against the user message a chat engine has just
+  stored when `get()` is called without input, keeps that message in the history it returns, and
+  implements `set`/`aset` and the tokenizer that chat engines expect.
+- **AutoGen.** `update_context` now returns an `UpdateContextResult` wrapping a
+  `MemoryQueryResult`, as `AssistantAgent` requires, and `query` accepts a string or a
+  `MemoryContent`.
+- **DSPy.** `ActroneRM` now returns passages with `long_text` and a `passages` attribute, the shape
+  `dspy.Retrieve` reads.
+
+### Added
+
+- **`OpenAIFactExtractor` works with local and self-hosted models.** It takes `base_url` (for
+  example `http://localhost:11434/v1` for Ollama) or a ready `client`, so any OpenAI-compatible
+  server can do extraction, as the TypeScript library already allowed. It asks for a JSON schema
+  and falls back to JSON mode, for good, only when a server rejects the schema.
 
 ### Changed
 
+- **Newer framework majors are supported.** Haystack 3, Agno 2 and 3, Pydantic AI 2 and Google
+  ADK 2 passed the same checks as the older releases, so the extras now allow them:
+  `haystack-ai>=2.0,<4`, `agno>=1.0,<4`, `pydantic-ai>=1.32,<3` and `google-adk>=1.2,<3`.
+- **Supported framework versions now match what was tested.** Each extra's lower bound is the
+  oldest release the integration was verified against: `crewai>=0.95`, `autogen-agentchat` and
+  `autogen-core>=0.4.3`, `smolagents>=1.5.1`, `openai-agents>=0.2`, `pydantic-ai>=1.32`,
+  `semantic-kernel>=1.16` and `google-adk>=1.2`. Older releases fail to install or import with
+  current dependencies, or lack the API the integration uses. The `dspy` extra now installs `dspy` (the package
+  was renamed from `dspy-ai`) and allows 3.x: `dspy>=2.5,<4`.
 - **PyPI listing.** Keywords now cover what people search for (agent-memory, long-term-memory,
   semantic-search, rag, llm, pgvector, agno), and new classifiers state that the package is typed,
   asyncio-based, built on Pydantic 2, Python 3 only and OS independent.
