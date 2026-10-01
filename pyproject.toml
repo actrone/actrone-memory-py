@@ -85,7 +85,7 @@ microsoft_agent_framework = ["agent-framework-core>=1.0,<2"]
 # In-process ONNX dense embedder (onnxruntime, no torch), the preferred "local" recall tier.
 onnx        = ["fastembed>=0.7,<1"]
 # sentence-transformers is the heavier torch-backed local tier (second in the graceful chain).
-local       = ["sentence-transformers>=3.0,<4", "torch>=2.3"]
+local       = ["sentence-transformers>=3.0,<6", "torch>=2.3"]
 all = [
     "actrone-memory[langchain]",
     "actrone-memory[langgraph]",
