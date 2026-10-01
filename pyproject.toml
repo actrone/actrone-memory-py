@@ -51,7 +51,7 @@ actrone-memory = "actrone_memory.cli:main"
 [project.optional-dependencies]
 # the durable-backend / managed-embedding dependencies as opt-in extras (kept out of the
 # local-first base install). `production` is the convenience bundle for the redis_qdrant backend.
-redis       = ["redis[hiredis]>=5.0,<6"]
+redis       = ["redis[hiredis]>=5.0,<9"]
 qdrant      = ["qdrant-client>=1.9,<2"]
 # Postgres + pgvector as the long-term tier: no new service for teams already on Postgres.
 pgvector    = ["asyncpg>=0.29,<1"]
