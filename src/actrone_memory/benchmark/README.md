@@ -17,12 +17,15 @@ Output (default local backend, in-memory store + dependency-free hashing embedde
 | metric        | value   |
 | ------------- | ------- |
 | queries       | 14      |
-| recall@5      | 0.929   |
-| precision@5   | 0.186   |
-| MRR           | 0.929   |
-| latency p50   | 0.22 ms |
-| latency p95   | 0.61 ms |
+| recall@5      | 1.000   |
+| precision@5   | 0.200   |
+| MRR           | 0.943   |
+| latency p50   | 0.27 ms |
+| latency p95   | 1.43 ms |
 ```
+
+The quality metrics are deterministic. Latency depends on the machine; these figures are from one
+run of 0.2.1 on a development machine.
 
 ## What it measures
 
