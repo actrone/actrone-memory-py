@@ -118,7 +118,7 @@ dev = [
     # it) and it needs a local account on a shared host to exploit. Revisit as soon as
     # pytest-asyncio supports pytest 9.
     "pytest>=8.2,<9",
-    "pytest-asyncio>=0.23,<1",
+    "pytest-asyncio>=0.23,<2",
     "pytest-cov>=5.0,<6",
     # CI's integration job runs with --timeout, so a test stuck on Redis or Qdrant fails instead of
     # holding the runner until GitHub's 6-hour job limit.
