@@ -8,6 +8,8 @@
 [![codecov](https://codecov.io/gh/actrone/actrone-memory-py/branch/main/graph/badge.svg)](https://codecov.io/gh/actrone/actrone-memory-py)
 [![CI](https://github.com/actrone/actrone-memory-py/actions/workflows/ci.yml/badge.svg)](https://github.com/actrone/actrone-memory-py/actions)
 
+**[Documentation](https://actrone.com/docs/memory/overview)** · [Quickstart](https://actrone.com/docs/getting-started/quickstart) · [Framework integrations](https://actrone.com/docs/memory/integrations) · [Changelog](https://actrone.com/changelog) · [Blog](https://actrone.com/blog)
+
 ---
 
 ![A fact landing and being classified by sensitivity](https://raw.githubusercontent.com/actrone/actrone-memory-py/main/media/oss-launch-loop.gif)
