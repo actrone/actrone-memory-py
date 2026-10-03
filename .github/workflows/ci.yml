@@ -82,7 +82,7 @@ jobs:
       # Codecov rejects tokenless uploads ("Token required"), which left the README badge at
       # "unknown". OIDC needs no stored secret. Pull requests from forks get no OIDC token, so their
       # upload is skipped; fail_ci_if_error stays off so that never fails a contributor's CI.
-      - uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: coverage.xml
           use_oidc: true
