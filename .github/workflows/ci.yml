@@ -34,7 +34,7 @@ jobs:
       # The versions are exactly what uv.lock pins. An unpinned install took tenacity 9.2 the week it
       # shipped, and its new `retry(...)` type failed strict mypy on pushes that never touched it.
       # `--locked` also fails the job when uv.lock is out of date with pyproject.toml. New releases
-      # arrive as Dependabot lock bumps, and latest-deps.yml tests the newest versions a user installs.
+      # arrive as Renovate lock bumps, and latest-deps.yml tests the newest versions a user installs.
       - name: Install the locked dependency set
         run: |
           uv sync --locked --python ${{ env.MIN_PYTHON_VERSION }} --extra dev --extra redis --extra qdrant --extra pgvector

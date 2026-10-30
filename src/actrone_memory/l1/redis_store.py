@@ -24,6 +24,7 @@ def _text(value: bytes | str) -> str:
     types as ``bytes | str`` because the setting is not visible to the type checker."""
     return value.decode() if isinstance(value, bytes) else value
 
+
 # Transient failures worth another attempt. `BusyLoadingError` and
 # `MaxConnectionsError` subclass ConnectionError, so both are covered.
 # Permanent faults (unknown command, bad argument type) are excluded: retrying
