@@ -64,7 +64,9 @@ class ActroneAgentFrameworkMemory(BaseActroneMemory):
 
         outer = self
 
-        class _ActroneContextProvider(ContextProvider):  # type: ignore[misc]
+        # agent-framework is an optional extra: without it the base is Any (misc), with it the ignore
+        # is unused, so both codes are listed and the check passes in either environment.
+        class _ActroneContextProvider(ContextProvider):  # type: ignore[misc, unused-ignore]
             """Adds governed memory before a run; persists the exchange after it."""
 
             async def before_run(

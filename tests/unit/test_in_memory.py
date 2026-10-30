@@ -286,7 +286,15 @@ async def test_local_first_create_needs_no_services_or_key():
 
 
 @pytest.mark.asyncio
-async def test_local_first_uses_in_memory_store_instances():
+async def test_local_first_uses_in_memory_store_instances(monkeypatch: pytest.MonkeyPatch):
+    # The base install, with neither dense extra: the graceful local chain lands on hashing. Both
+    # dense tiers are made unavailable explicitly, so the result does not depend on which extras
+    # happen to be installed (with `[onnx]` present the chain rightly picks FastEmbed instead).
+    def _not_installed(*_args: object, **_kwargs: object) -> None:
+        raise ImportError("extra not installed")
+
+    monkeypatch.setattr("actrone_memory.l2.embedder.FastEmbedEmbedder", _not_installed)
+    monkeypatch.setattr("actrone_memory.l2.embedder.LocalEmbedder", _not_installed)
     cfg = MemoryConfig()
     mm = await MemoryManager.create(cfg)
     try:

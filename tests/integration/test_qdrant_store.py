@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
-from testcontainers.qdrant import QdrantContainer
+from testcontainers.community.qdrant import QdrantContainer
 
 from actrone_memory.l2.qdrant_store import QdrantStore
 from actrone_memory.models import MemoryEntry
@@ -10,7 +10,7 @@ from actrone_memory.models import MemoryEntry
 
 @pytest.fixture(scope="module")
 def qdrant_url():
-    with QdrantContainer("qdrant/qdrant:v1.13.6") as container:
+    with QdrantContainer("qdrant/qdrant:v1.20.0") as container:
         yield f"http://{container.get_container_host_ip()}:{container.get_exposed_port(6333)}"
 
 

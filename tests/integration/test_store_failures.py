@@ -18,8 +18,8 @@ import asyncio
 import httpx
 import pytest
 import pytest_asyncio
-from testcontainers.qdrant import QdrantContainer
-from testcontainers.redis import RedisContainer
+from testcontainers.community.qdrant import QdrantContainer
+from testcontainers.community.redis import RedisContainer
 
 from actrone_memory.exceptions import EmbeddingError, StoreConnectionError
 from actrone_memory.l1.redis_store import RedisStore
@@ -138,7 +138,7 @@ async def test_redis_recovers_after_restart(redis_store_recoverable):
 
 @pytest_asyncio.fixture
 async def qdrant_store_with_4dim():
-    with QdrantContainer("qdrant/qdrant:v1.13.6") as container:
+    with QdrantContainer("qdrant/qdrant:v1.20.0") as container:
         url = f"http://{container.get_container_host_ip()}:{container.get_exposed_port(6333)}"
         store = await QdrantStore.from_url(
             url,

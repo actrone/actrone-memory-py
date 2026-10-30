@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
-from testcontainers.redis import RedisContainer
+from testcontainers.community.redis import RedisContainer
 
 from actrone_memory.l1.redis_store import RedisStore
 from actrone_memory.models import Turn

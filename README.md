@@ -73,7 +73,7 @@ For durable, horizontally-scalable production, opt into the Redis + Qdrant backe
 
 ```bash
 docker run -d -p 6379:6379 redis:7.2-alpine
-docker run -d -p 6333:6333 qdrant/qdrant:v1.9.2
+docker run -d -p 6333:6333 qdrant/qdrant:v1.20.0
 ```
 
 ---

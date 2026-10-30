@@ -8,6 +8,7 @@ from redis.asyncio.connection import ConnectionPool
 from redis.exceptions import AuthenticationError, AuthorizationError, RedisError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.typing import EncodableT, FieldT
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from actrone_memory.exceptions import StoreConnectionError
@@ -16,6 +17,12 @@ from actrone_memory.metrics import track_store_op
 from actrone_memory.models import SessionMetadata, Turn
 
 log = bind_logger(__name__)
+
+
+def _text(value: bytes | str) -> str:
+    """A Redis reply as text. The pool returns bytes (``decode_responses=False``), which redis-py
+    types as ``bytes | str`` because the setting is not visible to the type checker."""
+    return value.decode() if isinstance(value, bytes) else value
 
 # Transient failures worth another attempt. `BusyLoadingError` and
 # `MaxConnectionsError` subclass ConnectionError, so both are covered.
@@ -107,14 +114,12 @@ class RedisStore:
             pipe.expire(key, ttl_seconds)
 
             now_iso = datetime.now(UTC).isoformat()
-            meta: dict[str, str] = {
+            meta: dict[FieldT, EncodableT] = {
                 "agent_id": agent_id,
                 "session_id": session_id,
                 "last_active": now_iso,
             }
-            # redis-py async methods are typed `Awaitable[T] | T` (shared sync/async
-            # surface), so awaiting them trips mypy's [misc] union-await check.
-            existing_created = await self._r.hget(meta_key, "created_at")  # type: ignore[misc]
+            existing_created = await self._r.hget(meta_key, "created_at")
             if not existing_created:
                 meta["created_at"] = now_iso
             pipe.hset(meta_key, mapping=meta)
@@ -136,7 +141,7 @@ class RedisStore:
         key = self._turns_key(agent_id, session_id)
         count = n if n is not None else self._max_turns
         try:
-            raw: list[bytes] = await self._r.lrange(key, -count, -1)  # type: ignore[misc]
+            raw = await self._r.lrange(key, -count, -1)
             return [Turn.model_validate(json.loads(item)) for item in raw]
         except RedisError as exc:
             log.error(
@@ -150,10 +155,10 @@ class RedisStore:
         """Return metadata for a session, or None if the session does not exist or has expired."""
         meta_key = self._meta_key(agent_id, session_id)
         try:
-            data = await self._r.hgetall(meta_key)  # type: ignore[misc]
+            data = await self._r.hgetall(meta_key)
             if not data:
                 return None
-            decoded = {k.decode(): v.decode() for k, v in data.items()}
+            decoded = {_text(k): _text(v) for k, v in data.items()}
             return SessionMetadata(
                 agent_id=decoded.get("agent_id", agent_id),
                 session_id=decoded.get("session_id", session_id),
@@ -185,7 +190,7 @@ class RedisStore:
     async def turn_count(self, agent_id: str, session_id: str) -> int:
         """Return the number of turns currently in the session list."""
         try:
-            return await self._r.llen(self._turns_key(agent_id, session_id))  # type: ignore[no-any-return, misc]
+            return await self._r.llen(self._turns_key(agent_id, session_id))
         except RedisError as exc:
             raise StoreConnectionError("Redis", exc) from exc
 

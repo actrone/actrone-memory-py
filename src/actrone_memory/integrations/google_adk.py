@@ -50,7 +50,9 @@ class ActroneGoogleADKMemory(BaseActroneMemory):
 
         outer = self
 
-        class _ActroneADKMemoryService(BaseMemoryService):  # type: ignore[misc]
+        # google-adk is an optional extra: without it the base is Any (misc), with it the ignore is
+        # unused, so both codes are listed and the check passes in either environment.
+        class _ActroneADKMemoryService(BaseMemoryService):  # type: ignore[misc, unused-ignore]
             """ADK ``BaseMemoryService`` that stores into / searches Actrone memory."""
 
             async def add_session_to_memory(self, session: Any) -> None:

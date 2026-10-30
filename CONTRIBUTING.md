@@ -33,7 +33,7 @@ uv pip install -e ".[dev,langchain,langgraph,crewai]"
 
 # 3. Start Redis and Qdrant locally
 docker run -d --name actrone-redis  -p 6379:6379 redis:7.2-alpine
-docker run -d --name actrone-qdrant -p 6333:6333 qdrant/qdrant:v1.9.2
+docker run -d --name actrone-qdrant -p 6333:6333 qdrant/qdrant:v1.20.0
 
 # 4. Set your environment variables
 cp .env.example .env

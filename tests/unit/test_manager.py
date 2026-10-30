@@ -244,6 +244,11 @@ async def test_auto_summarise_triggered_above_threshold(fake_config: MemoryConfi
     with patch("actrone_memory.manager.asyncio.create_task") as mock_task:
         await mm.store_turn("a", "s", "hi", "hello")
         mock_task.assert_called_once()
+    # The mock never runs the coroutine it was handed, so close it here; left alone it would be
+    # garbage-collected un-awaited and warn in whichever test happened to run next.
+    spawned = mock_task.call_args.args[0]
+    assert spawned.cr_code.co_name == "_summarise_session"
+    spawned.close()
     # The summary cooldown lock must have been claimed before spawning.
     mm._l1.try_acquire_summary_lock.assert_called_once()
 

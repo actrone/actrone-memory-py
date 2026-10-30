@@ -1,0 +1,60 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>actrone/actrone-infra//renovate/default.json5"
+  ],
+  "packageRules": [
+    {
+      "description": "Test, lint and docs tooling: minor and patch updates in one PR.",
+      "matchPackageNames": [
+        "pytest",
+        "pytest-*",
+        "mypy",
+        "ruff",
+        "bandit",
+        "testcontainers",
+        "httpx",
+        "httpx2",
+        "respx",
+        "pyyaml",
+        "sphinx",
+        "furo",
+        "pip-audit"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "python dev tooling"
+    },
+    {
+      "description": "Framework extras land in consumers’ resolutions: each arrives alone, and widening a range must also update compatibility.yaml (the drift gate fails otherwise).",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "project.optional-dependencies"
+      ],
+      "matchPackageNames": [
+        "*",
+        "!pytest",
+        "!pytest-*",
+        "!mypy",
+        "!ruff",
+        "!bandit",
+        "!testcontainers",
+        "!httpx",
+        "!httpx2",
+        "!respx",
+        "!pyyaml",
+        "!sphinx",
+        "!furo",
+        "!pip-audit"
+      ],
+      "groupName": null,
+      "labels": [
+        "framework-compat"
+      ]
+    }
+  ]
+}
