@@ -11,7 +11,7 @@ from tests.conftest import ConstantEmbedder
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_returns_vector():
+async def test_cached_embedder_returns_vector() -> None:
     cache = AsyncMock()
     cache.get.return_value = None
     cache.set.return_value = None
@@ -22,7 +22,7 @@ async def test_cached_embedder_returns_vector():
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_uses_cache_on_hit():
+async def test_cached_embedder_uses_cache_on_hit() -> None:
     cached_value = json.dumps([0.9, 0.8, 0.7, 0.6]).encode()
     cache = AsyncMock()
     cache.get.return_value = cached_value
@@ -45,7 +45,7 @@ def _batch_cache(*values: bytes | None) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_batch_partial_cache_hit():
+async def test_cached_embedder_batch_partial_cache_hit() -> None:
     cache = _batch_cache(json.dumps([0.9, 0.8, 0.7, 0.6]).encode(), None)
 
     embedder = CachedEmbedder(ConstantEmbedder(), cache)
@@ -56,7 +56,7 @@ async def test_cached_embedder_batch_partial_cache_hit():
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_batch_reads_in_one_round_trip():
+async def test_cached_embedder_batch_reads_in_one_round_trip() -> None:
     """All lookups go out as a single MGET, never one GET per text."""
     cache = _batch_cache(None, None, None)
 
@@ -69,7 +69,7 @@ async def test_cached_embedder_batch_reads_in_one_round_trip():
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_batch_writes_misses_in_one_pipeline():
+async def test_cached_embedder_batch_writes_misses_in_one_pipeline() -> None:
     cache = _batch_cache(json.dumps([0.9, 0.8, 0.7, 0.6]).encode(), None, None)
 
     embedder = CachedEmbedder(ConstantEmbedder(), cache)
@@ -81,7 +81,7 @@ async def test_cached_embedder_batch_writes_misses_in_one_pipeline():
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_batch_all_hits_skips_inner_and_pipeline():
+async def test_cached_embedder_batch_all_hits_skips_inner_and_pipeline() -> None:
     vector = json.dumps([0.9, 0.8, 0.7, 0.6]).encode()
     cache = _batch_cache(vector, vector)
     inner = ConstantEmbedder()
@@ -94,7 +94,7 @@ async def test_cached_embedder_batch_all_hits_skips_inner_and_pipeline():
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_batch_empty_input_short_circuits():
+async def test_cached_embedder_batch_empty_input_short_circuits() -> None:
     cache = _batch_cache()
 
     embedder = CachedEmbedder(ConstantEmbedder(), cache)
@@ -103,7 +103,7 @@ async def test_cached_embedder_batch_empty_input_short_circuits():
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_writes_to_cache_on_miss():
+async def test_cached_embedder_writes_to_cache_on_miss() -> None:
     cache = AsyncMock()
     cache.get.return_value = None
 
@@ -112,7 +112,7 @@ async def test_cached_embedder_writes_to_cache_on_miss():
     cache.set.assert_called_once()
 
 
-def test_cached_embedder_dimensions_delegates_to_inner():
+def test_cached_embedder_dimensions_delegates_to_inner() -> None:
     cache = AsyncMock()
     embedder = CachedEmbedder(ConstantEmbedder(), cache)
     assert embedder.dimensions == 4
@@ -131,13 +131,13 @@ def _make_openai_embedder() -> tuple[OpenAIEmbedder, MagicMock]:
     return embedder, mock_client
 
 
-def test_openai_embedder_dimensions():
+def test_openai_embedder_dimensions() -> None:
     embedder, _ = _make_openai_embedder()
     assert embedder.dimensions == 1536
 
 
 @pytest.mark.asyncio
-async def test_openai_embedder_embed_returns_vector():
+async def test_openai_embedder_embed_returns_vector() -> None:
     embedder, mock_client = _make_openai_embedder()
 
     mock_item = MagicMock()
@@ -152,7 +152,7 @@ async def test_openai_embedder_embed_returns_vector():
 
 
 @pytest.mark.asyncio
-async def test_openai_embedder_embed_batch_returns_vectors():
+async def test_openai_embedder_embed_batch_returns_vectors() -> None:
     embedder, mock_client = _make_openai_embedder()
 
     items = [MagicMock(embedding=[float(i)]) for i in range(3)]
@@ -166,14 +166,14 @@ async def test_openai_embedder_embed_batch_returns_vectors():
 
 
 @pytest.mark.asyncio
-async def test_openai_embedder_embed_batch_empty_returns_empty():
+async def test_openai_embedder_embed_batch_empty_returns_empty() -> None:
     embedder, _ = _make_openai_embedder()
     results = await embedder.embed_batch([])
     assert results == []
 
 
 @pytest.mark.asyncio
-async def test_openai_embedder_raises_embedding_error_on_failure():
+async def test_openai_embedder_raises_embedding_error_on_failure() -> None:
     embedder, mock_client = _make_openai_embedder()
     mock_client.embeddings = MagicMock()
     mock_client.embeddings.create = AsyncMock(side_effect=Exception("API error"))
@@ -187,18 +187,18 @@ async def test_openai_embedder_raises_embedding_error_on_failure():
 # ------------------------------------------------------------------
 
 
-def test_hashing_embedder_rejects_bad_dimensions():
+def test_hashing_embedder_rejects_bad_dimensions() -> None:
     with pytest.raises(ValueError, match="dimensions"):
         HashingEmbedder(dimensions=0)
 
 
-def test_hashing_embedder_dimensions_property():
+def test_hashing_embedder_dimensions_property() -> None:
     assert HashingEmbedder(dimensions=128).dimensions == 128
     assert HashingEmbedder().dimensions == 256  # default matches TS LocalEmbedder
 
 
 @pytest.mark.asyncio
-async def test_hashing_embedder_is_deterministic():
+async def test_hashing_embedder_is_deterministic() -> None:
     emb = HashingEmbedder()
     v1 = await emb.embed("the quick brown fox")
     v2 = await emb.embed("the quick brown fox")
@@ -207,7 +207,7 @@ async def test_hashing_embedder_is_deterministic():
 
 
 @pytest.mark.asyncio
-async def test_hashing_embedder_is_l2_normalised():
+async def test_hashing_embedder_is_l2_normalised() -> None:
     emb = HashingEmbedder()
     vec = await emb.embed("hello world hello")
     norm = sum(v * v for v in vec) ** 0.5
@@ -215,14 +215,14 @@ async def test_hashing_embedder_is_l2_normalised():
 
 
 @pytest.mark.asyncio
-async def test_hashing_embedder_empty_text_is_zero_vector():
+async def test_hashing_embedder_empty_text_is_zero_vector() -> None:
     emb = HashingEmbedder(dimensions=16)
     vec = await emb.embed("!!!")  # no word characters
     assert vec == [0.0] * 16
 
 
 @pytest.mark.asyncio
-async def test_hashing_embedder_word_overlap_scores_higher():
+async def test_hashing_embedder_word_overlap_scores_higher() -> None:
     from actrone_memory.in_memory import cosine_similarity
 
     emb = HashingEmbedder()
@@ -233,7 +233,7 @@ async def test_hashing_embedder_word_overlap_scores_higher():
 
 
 @pytest.mark.asyncio
-async def test_hashing_embedder_batch_matches_single():
+async def test_hashing_embedder_batch_matches_single() -> None:
     emb = HashingEmbedder()
     batch = await emb.embed_batch(["alpha beta", "gamma delta"])
     assert batch[0] == await emb.embed("alpha beta")

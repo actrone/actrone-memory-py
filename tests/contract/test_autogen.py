@@ -202,7 +202,7 @@ async def test_update_context_returns_autogens_result_shape() -> None:
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
     memory = ActroneAutoGenMemory("support-bot", "s1", memory_manager=mm)
     context = UnboundedChatCompletionContext()
@@ -228,7 +228,7 @@ async def test_memory_reaches_the_model_in_a_real_assistant_agent() -> None:
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
     memory = ActroneAutoGenMemory("support-bot", "s1", memory_manager=mm)
     seen: list[list[str]] = []

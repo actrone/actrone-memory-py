@@ -4,6 +4,24 @@ All notable changes to `actrone-memory` follow [Semantic Versioning](https://sem
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **A `Reranker` protocol.** `MemoryManager(reranker=...)` and `MemoryManager.create(reranker=...)` take any
+  object with `async rerank(query, entries, *, top_k=None) -> list[MemoryEntry]`, typed as
+  `actrone_memory.Reranker`, rather than only `CrossEncoderReranker`. The Haystack components' `run` and
+  `run_async` are visible to type checkers, and the package's tests are type checked in CI as strictly as
+  its source.
+- **Actrone's hosted memory in the benchmark.** `actrone_memory.benchmark.hosted.ActroneHostedMemory`
+  runs the same recall@k, precision@k and MRR harness against Actrone's hosted memory API, so hosted and
+  local memory are measured the same way on the same cases (LOCOMO and LongMemEval through
+  `load_cases`). It erases its benchmark agent's memory between cases, retries throttles and server
+  errors with backoff and jitter, and uses the standard library only. Run it with
+  `python -m actrone_memory.benchmark.hosted --dataset cases.json`.
+- **An Actrone export loads as `MemoryEntry`.** A test holds the hosted export format to this library's
+  entry: the same fields and the same four sensitivity tags.
+
 ## [0.3.0] - 2026-10-17
 
 ### Added

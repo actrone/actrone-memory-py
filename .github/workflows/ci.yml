@@ -46,7 +46,7 @@ jobs:
       - name: Ruff, formatting
         run: ruff format --check src/ tests/
       - name: mypy, strict type checking
-        run: mypy src/actrone_memory --strict
+        run: mypy src/actrone_memory tests --strict
       - name: Type-check docs and CLI recipe examples
         # The guide snippets and every `actrone-memory add` recipe are real example files, type-checked
         # against the installed package (which ships py.typed); an API change that breaks a documented

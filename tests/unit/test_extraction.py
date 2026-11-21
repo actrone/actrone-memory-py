@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
 
 from actrone_memory.config import MemoryConfig
 from actrone_memory.exceptions import ConfigurationError
@@ -41,15 +42,15 @@ def _manager(extractor: FactExtractor | None = None, **cfg_over: object) -> Memo
     return MemoryManager(store, store, HashingEmbedder(), cfg, extractor=extractor)
 
 
-def test_fake_extractor_satisfies_protocol():
+def test_fake_extractor_satisfies_protocol() -> None:
     assert isinstance(FakeExtractor([]), FactExtractor)
 
 
-def test_spec_version_is_pinned():
+def test_spec_version_is_pinned() -> None:
     assert EXTRACTION_SPEC_VERSION == "1.1"
 
 
-def test_prompt_matches_the_shared_spec():
+def test_prompt_matches_the_shared_spec() -> None:
     # The same hash is pinned in actrone-memory-ts and in the spec doc (extraction.v1.md), so a
     # prompt edit in one library fails here until the other library and the spec catch up.
     digest = hashlib.sha256(EXTRACTION_SYSTEM_PROMPT.encode("utf-8")).hexdigest()
@@ -93,14 +94,14 @@ def _extractor(replies: list[str | Exception]) -> tuple[OpenAIFactExtractor, _Fa
     return OpenAIFactExtractor(model="small-local-model", client=client), completions  # type: ignore[arg-type]
 
 
-def test_format_extraction_input_frames_the_conversation():
+def test_format_extraction_input_frames_the_conversation() -> None:
     framed = format_extraction_input("User: hi\nAssistant: hello")
     assert framed.startswith("Conversation:\n\nUser: hi\nAssistant: hello")
     assert framed.endswith("Extract the durable facts from this conversation.")
 
 
 @pytest.mark.asyncio
-async def test_openai_extractor_sends_the_spec_request_with_a_json_schema():
+async def test_openai_extractor_sends_the_spec_request_with_a_json_schema() -> None:
     extractor, completions = _extractor([_ONE_FACT])
     facts = await extractor.extract("User: I'm Alex.\nAssistant: Hi Alex!")
 
@@ -115,7 +116,7 @@ async def test_openai_extractor_sends_the_spec_request_with_a_json_schema():
 
 
 @pytest.mark.asyncio
-async def test_openai_extractor_falls_back_to_json_mode_when_the_schema_is_rejected():
+async def test_openai_extractor_falls_back_to_json_mode_when_the_schema_is_rejected() -> None:
     extractor, completions = _extractor([_RejectedError(400), _ONE_FACT, _ONE_FACT])
 
     assert len(await extractor.extract("User: I'm Alex.")) == 1
@@ -129,7 +130,7 @@ async def test_openai_extractor_falls_back_to_json_mode_when_the_schema_is_rejec
 
 
 @pytest.mark.asyncio
-async def test_openai_extractor_keeps_the_schema_after_a_transient_error():
+async def test_openai_extractor_keeps_the_schema_after_a_transient_error() -> None:
     extractor, completions = _extractor([_RejectedError(503), _ONE_FACT])
 
     assert await extractor.extract("User: I'm Alex.") == []  # best effort: nothing, no raise
@@ -139,12 +140,12 @@ async def test_openai_extractor_keeps_the_schema_after_a_transient_error():
 
 
 @pytest.mark.asyncio
-async def test_openai_extractor_returns_nothing_when_both_formats_fail():
+async def test_openai_extractor_returns_nothing_when_both_formats_fail() -> None:
     extractor, _ = _extractor([_RejectedError(400), _RejectedError(400)])
     assert await extractor.extract("User: I'm Alex.") == []
 
 
-def test_openai_extractor_builds_a_client_for_a_base_url():
+def test_openai_extractor_builds_a_client_for_a_base_url() -> None:
     pytest.importorskip("openai")
     extractor = OpenAIFactExtractor(
         api_key="local", model="m", base_url="http://localhost:11434/v1"
@@ -157,7 +158,7 @@ def test_openai_extractor_builds_a_client_for_a_base_url():
 # ------------------------------------------------------------------
 
 
-def test_parse_facts_envelope():
+def test_parse_facts_envelope() -> None:
     raw = '{"facts": [{"content": "User is named Alex.", "sensitivity": "pii", "importance": 0.9}]}'
     facts = parse_facts(raw)
     assert len(facts) == 1
@@ -166,28 +167,28 @@ def test_parse_facts_envelope():
     assert facts[0].importance == 0.9
 
 
-def test_parse_facts_bare_list():
+def test_parse_facts_bare_list() -> None:
     facts = parse_facts('[{"content": "User prefers email."}]')
     assert len(facts) == 1
     assert facts[0].sensitivity == "none"  # default
     assert facts[0].importance == 0.6  # default
 
 
-def test_parse_facts_invalid_json_returns_empty():
+def test_parse_facts_invalid_json_returns_empty() -> None:
     assert parse_facts("not json at all") == []
 
 
-def test_parse_facts_non_list_returns_empty():
+def test_parse_facts_non_list_returns_empty() -> None:
     assert parse_facts('{"facts": "oops"}') == []
 
 
-def test_parse_facts_skips_malformed_entries():
+def test_parse_facts_skips_malformed_entries() -> None:
     raw = '{"facts": [{"content": ""}, {"noContent": true}, "string", {"content": "Good fact."}]}'
     facts = parse_facts(raw)
     assert [f.content for f in facts] == ["Good fact."]
 
 
-def test_parse_facts_skips_bad_sensitivity_but_keeps_others():
+def test_parse_facts_skips_bad_sensitivity_but_keeps_others() -> None:
     raw = (
         '{"facts": [{"content": "bad", "sensitivity": "nonsense"}, '
         '{"content": "ok", "sensitivity": "low"}]}'
@@ -196,7 +197,7 @@ def test_parse_facts_skips_bad_sensitivity_but_keeps_others():
     assert [f.content for f in facts] == ["ok"]
 
 
-def test_parse_facts_clamps_content_and_count():
+def test_parse_facts_clamps_content_and_count() -> None:
     long = "x" * 5000
     many = ",".join(f'{{"content": "fact {i}"}}' for i in range(30))
     raw = f'{{"facts": [{{"content": "{long}"}}, {many}]}}'
@@ -211,7 +212,7 @@ def test_parse_facts_clamps_content_and_count():
 
 
 @pytest.mark.asyncio
-async def test_extract_memories_stores_facts_with_provenance():
+async def test_extract_memories_stores_facts_with_provenance() -> None:
     extractor = FakeExtractor(
         [
             ExtractedFact(content="User's email is alex@example.com.", sensitivity="pii"),
@@ -234,7 +235,7 @@ async def test_extract_memories_stores_facts_with_provenance():
 
 
 @pytest.mark.asyncio
-async def test_extract_memories_raises_without_extractor():
+async def test_extract_memories_raises_without_extractor() -> None:
     mm = _manager(extractor=None)
     try:
         with pytest.raises(ConfigurationError, match="not enabled"):
@@ -244,7 +245,7 @@ async def test_extract_memories_raises_without_extractor():
 
 
 @pytest.mark.asyncio
-async def test_extract_memories_empty_when_no_turns():
+async def test_extract_memories_empty_when_no_turns() -> None:
     mm = _manager(FakeExtractor([ExtractedFact(content="ignored")]))
     try:
         ids = await mm.extract_memories("a1", "s-empty")
@@ -254,7 +255,7 @@ async def test_extract_memories_empty_when_no_turns():
 
 
 @pytest.mark.asyncio
-async def test_extraction_rides_summarise_path():
+async def test_extraction_rides_summarise_path() -> None:
     extractor = FakeExtractor([ExtractedFact(content="User is building a trading bot.")])
     mm = _manager(extractor)
     try:
@@ -272,22 +273,22 @@ async def test_extraction_rides_summarise_path():
 # ------------------------------------------------------------------
 
 
-def test_build_extractor_off_by_default():
+def test_build_extractor_off_by_default() -> None:
     cfg = MemoryConfig()
     assert MemoryManager._build_extractor(cfg) is None
 
 
-def test_build_extractor_skipped_for_non_openai_provider():
+def test_build_extractor_skipped_for_non_openai_provider() -> None:
     # extract_facts on, but hashing provider has no LLM → skipped.
     cfg = MemoryConfig(extract_facts=True, embedding_provider="hashing")
     assert MemoryManager._build_extractor(cfg) is None
 
 
-def test_build_extractor_built_for_openai():
+def test_build_extractor_built_for_openai() -> None:
     cfg = MemoryConfig(
         extract_facts=True,
         embedding_provider="openai",
-        openai_api_key="sk-test",  # type: ignore[arg-type]
+        openai_api_key=SecretStr("sk-test"),
     )
     extractor = MemoryManager._build_extractor(cfg)
     assert extractor is not None

@@ -154,7 +154,7 @@ def test_retriever_runs_in_a_pipeline_and_returns_documents() -> None:
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))  # type: ignore[call-arg]
+    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))
     asyncio.run(mm.inject_memory("agent-1", "The nightly index rebuild runs at 2am.", 0.9))
     pipeline = Pipeline()
     pipeline.add_component("memory", ActroneRetriever(agent_id="agent-1", memory_manager=mm))
@@ -172,7 +172,7 @@ def test_writer_runs_in_a_pipeline_and_stores_the_turn() -> None:
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))  # type: ignore[call-arg]
+    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))
     pipeline = Pipeline()
     pipeline.add_component(
         "writer", ActroneWriter(agent_id="agent-1", session_id="s1", memory_manager=mm)

@@ -101,7 +101,7 @@ def test_build_reranker_constructs_when_available(monkeypatch: pytest.MonkeyPatc
 @pytest.mark.asyncio
 async def test_manager_builds_reranker_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_fastembed_reranker(monkeypatch)
-    cfg = MemoryConfig(rerank_enabled=True)  # type: ignore[call-arg]
+    cfg = MemoryConfig(rerank_enabled=True)
     async with await MemoryManager.create(cfg) as mm:
         assert isinstance(mm._reranker, CrossEncoderReranker)  # built via build_reranker + the stub
 
@@ -110,7 +110,7 @@ async def test_manager_builds_reranker_when_enabled(monkeypatch: pytest.MonkeyPa
 async def test_manager_applies_reranker_in_search() -> None:
     # A reverse reranker proves the manager routes retrieval through _maybe_rerank: the returned
     # order is the reranker's, not the raw retrieval order.
-    cfg = MemoryConfig(relevance_threshold=0.01)  # type: ignore[call-arg]
+    cfg = MemoryConfig(relevance_threshold=0.01)
     async with await MemoryManager.create(cfg) as mm:
         await mm.inject_memory("agent-1", "France Paris capital city", importance=0.9)
         await mm.inject_memory("agent-1", "France Lyon riverside town", importance=0.9)
@@ -121,6 +121,6 @@ async def test_manager_applies_reranker_in_search() -> None:
             async def rerank(self, query: str, entries: Any, *, top_k: int | None = None) -> Any:
                 return list(reversed(entries))
 
-        mm._reranker = _ReverseReranker()  # type: ignore[assignment]
+        mm._reranker = _ReverseReranker()
         reranked = await mm.search_memories("agent-1", "France", limit=2)
         assert [e.id for e in reranked] == [e.id for e in reversed(baseline)]

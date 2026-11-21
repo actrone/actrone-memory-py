@@ -14,6 +14,7 @@ errors. Run via::
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest
@@ -64,7 +65,7 @@ class _StubEmbedder(Embedder):
 
 
 @pytest_asyncio.fixture
-async def redis_store_recoverable():
+async def redis_store_recoverable() -> AsyncIterator[tuple[RedisStore, RedisContainer]]:
     with RedisContainer("redis:7.2-alpine") as container:
         host = container.get_container_host_ip()
         port = container.get_exposed_port(6379)
@@ -84,7 +85,9 @@ async def redis_store_recoverable():
 
 
 @pytest.mark.asyncio
-async def test_redis_recovers_after_restart(redis_store_recoverable):
+async def test_redis_recovers_after_restart(
+    redis_store_recoverable: tuple[RedisStore, RedisContainer],
+) -> None:
     """The store's retry policy re-connects after a transient Redis outage.
 
     We restart the container rather than just closing the connection so the
@@ -102,12 +105,12 @@ async def test_redis_recovers_after_restart(redis_store_recoverable):
     container.get_wrapped_container().restart()
 
     # Poll until Redis accepts connections again (typically 3-8 s on Docker Desktop).
+    from redis.asyncio import Redis as _Redis
+    from redis.exceptions import RedisError
+
     for _ in range(15):
         await asyncio.sleep(1)
         try:
-            from redis.asyncio import Redis as _Redis
-            from redis.exceptions import RedisError
-
             host = container.get_container_host_ip()
             port = container.get_exposed_port(6379)
             probe: _Redis = _Redis.from_url(f"redis://{host}:{port}", socket_timeout=1.0)
@@ -137,7 +140,7 @@ async def test_redis_recovers_after_restart(redis_store_recoverable):
 
 
 @pytest_asyncio.fixture
-async def qdrant_store_with_4dim():
+async def qdrant_store_with_4dim() -> AsyncIterator[QdrantStore]:
     with QdrantContainer("qdrant/qdrant:v1.20.0") as container:
         url = f"http://{container.get_container_host_ip()}:{container.get_exposed_port(6333)}"
         store = await QdrantStore.from_url(
@@ -153,7 +156,7 @@ async def qdrant_store_with_4dim():
 
 
 @pytest.mark.asyncio
-async def test_qdrant_rejects_wrong_dimension_fast(qdrant_store_with_4dim: QdrantStore):
+async def test_qdrant_rejects_wrong_dimension_fast(qdrant_store_with_4dim: QdrantStore) -> None:
     """A vector of the wrong dimension is a permanent error, the retry layer
     must surface it within one attempt, not burn three retries."""
     entry = MemoryEntry(
@@ -182,7 +185,7 @@ async def test_qdrant_rejects_wrong_dimension_fast(qdrant_store_with_4dim: Qdran
 
 
 @pytest.mark.asyncio
-async def test_cached_embedder_propagates_inner_failure():
+async def test_cached_embedder_propagates_inner_failure() -> None:
     """When the inner embedder raises, the CachedEmbedder must surface it
     (not return a partial / mismatched-length batch)."""
     from redis.asyncio import Redis
@@ -210,7 +213,9 @@ async def test_cached_embedder_propagates_inner_failure():
 
 
 @pytest.mark.asyncio
-async def test_redis_concurrent_writes_serialise(redis_store_recoverable):
+async def test_redis_concurrent_writes_serialise(
+    redis_store_recoverable: tuple[RedisStore, RedisContainer],
+) -> None:
     """Concurrent appends from many coroutines must all land, Redis is single-
     threaded but the connection pool must not deadlock or drop writes."""
     store, _container = redis_store_recoverable
@@ -240,7 +245,7 @@ async def test_redis_concurrent_writes_serialise(redis_store_recoverable):
 
 
 @pytest.mark.asyncio
-async def test_qdrant_timeout_is_finite():
+async def test_qdrant_timeout_is_finite() -> None:
     """Direct httpx probe asserting our 5s timeout doesn't fall through to
     infinity if Qdrant accepts the TCP connection but never replies."""
     async with httpx.AsyncClient(timeout=httpx.Timeout(2.0)) as client:

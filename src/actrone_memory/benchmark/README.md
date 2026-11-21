@@ -55,8 +55,7 @@ import asyncio
 from actrone_memory import MemoryConfig
 from actrone_memory.benchmark import run_eval
 
-cfg = MemoryConfig(embedding_provider="openai", openai_api_key="sk-...",
-                   relevance_threshold=0.2)
+cfg = MemoryConfig(embedding_provider="openai", openai_api_key="sk-...", relevance_threshold=0.2)
 print(asyncio.run(run_eval(config=cfg)).format_table())
 ```
 
@@ -79,7 +78,9 @@ async methods:
 ```python
 class MemorySystem(Protocol):
     async def inject_memory(self, agent_id: str, content: str) -> str: ...
-    async def search_memories(self, agent_id: str, query: str, limit: int) -> list: ...  # items with .id
+    async def search_memories(
+        self, agent_id: str, query: str, limit: int
+    ) -> list: ...  # items with .id
 ```
 
 To benchmark **Mem0 / Zep / Letta / Cognee**, write a thin adapter mapping those two
@@ -90,17 +91,26 @@ import asyncio
 from actrone_memory import MemoryConfig, MemoryManager
 from actrone_memory.benchmark import run_comparison, format_comparison
 
+
 class Mem0Adapter:  # sketch, wrap the real mem0 client
-    def __init__(self, client): self._c = client
+    def __init__(self, client):
+        self._c = client
+
     async def inject_memory(self, agent_id, content):
         return self._c.add(content, user_id=agent_id)["id"]
+
     async def search_memories(self, agent_id, query, limit):
-        return [type("H", (), {"id": r["id"]}) for r in self._c.search(query, user_id=agent_id, limit=limit)]
+        return [
+            type("H", (), {"id": r["id"]})
+            for r in self._c.search(query, user_id=agent_id, limit=limit)
+        ]
+
 
 async def main():
     mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.2))
     reports = await run_comparison({"actrone": mm, "mem0": Mem0Adapter(mem0_client)})
     print(format_comparison(reports))
+
 
 asyncio.run(main())
 ```
@@ -108,6 +118,19 @@ asyncio.run(main())
 Competitor adapters are intentionally **not** bundled: they pull heavy deps and API
 keys, which would break the offline CI gate. The harness + a runnable baseline ship
 so the comparison is real and reproducible out of the box.
+
+## Actrone's hosted memory
+
+The same harness measures Actrone's hosted memory through its memory API, on the same cases:
+
+```bash
+ACTRONE_BASE_URL=https://api.actrone.com ACTRONE_API_KEY=... ACTRONE_BENCH_AGENT_ID=...     python -m actrone_memory.benchmark.hosted --dataset cases.json --k 5
+```
+
+`ActroneHostedMemory` writes to one agent kept for benchmarks and erases its memory whenever a new
+case starts, so cases never see each other's memories. The key must be allowed to manage that agent's
+memory. Convert LOCOMO or LongMemEval to the `load_cases` shape first; without `--dataset` it runs the
+bundled cases.
 
 ## CI gate
 

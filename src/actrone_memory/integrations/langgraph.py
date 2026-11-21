@@ -55,9 +55,8 @@ class ActroneCheckpointer:
     _recorded: dict[str, str]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
-        if cls is ActroneCheckpointer:
-            cls = _checkpoint_saver_class()
-        return super().__new__(cls)
+        target: type[Any] = _checkpoint_saver_class() if cls is ActroneCheckpointer else cls
+        return super().__new__(target)
 
     def __init__(
         self,
@@ -138,7 +137,7 @@ def _langgraph_savers() -> tuple[type[Any], Callable[[], Any]]:
     return BaseCheckpointSaver, DefaultSaver
 
 
-_SAVER_CLASS: type[Any] | None = None
+_saver_class: type[Any] | None = None
 
 
 def _checkpoint_saver_class() -> type[Any]:
@@ -150,9 +149,9 @@ def _checkpoint_saver_class() -> type[Any]:
     Forwarding also keeps the concrete saver's own optimised implementations in charge of graph
     state.
     """
-    global _SAVER_CLASS
-    if _SAVER_CLASS is not None:
-        return _SAVER_CLASS
+    global _saver_class
+    if _saver_class is not None:
+        return _saver_class
     saver_base, _ = _langgraph_savers()
 
     def forward(name: str) -> Any:
@@ -185,8 +184,8 @@ def _checkpoint_saver_class() -> type[Any]:
         namespace["with_allowlist"] = _with_allowlist
     namespace["__doc__"] = ActroneCheckpointer.__doc__
     namespace["__module__"] = __name__
-    _SAVER_CLASS = type("ActroneCheckpointSaver", (ActroneCheckpointer, saver_base), namespace)
-    return _SAVER_CLASS
+    _saver_class = type("ActroneCheckpointSaver", (ActroneCheckpointer, saver_base), namespace)
+    return _saver_class
 
 
 def _forwarded_property(name: str) -> property:

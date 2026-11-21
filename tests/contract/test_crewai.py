@@ -126,7 +126,7 @@ async def test_context_reaches_a_real_task_and_the_result_is_saved() -> None:
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
     memory = ActroneCrewMemory("support-bot", "s1", memory_manager=mm)
 
@@ -170,7 +170,7 @@ async def test_memory_reaches_the_model_in_a_real_crew_kickoff() -> None:
             )
             return "Thought: I know the answer.\nFinal Answer: Two approvals."
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
     memory = ActroneCrewMemory("support-bot", "s1", memory_manager=mm)
 

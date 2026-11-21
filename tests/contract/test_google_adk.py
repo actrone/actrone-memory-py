@@ -35,7 +35,7 @@ def test_adk_content_text_flattens_parts() -> None:
 
 @pytest.mark.asyncio
 async def test_tier1_context_and_remember() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneGoogleADKMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     await mm.inject_memory("support-bot", "Nightly index rebuild runs at 2am.", 0.9)
@@ -64,7 +64,7 @@ async def test_native_memory_service_against_real_google_adk() -> None:
     from google.adk.sessions import Session
     from google.genai import types
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneGoogleADKMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     # Instantiating also proves we implement every abstract method this ADK version declares.

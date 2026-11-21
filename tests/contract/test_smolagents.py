@@ -14,7 +14,7 @@ from actrone_memory.manager import MemoryManager
 
 @pytest.mark.asyncio
 async def test_task_context_prepends_memory_block_and_empty_when_none() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneSmolagentsMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     assert await memory.task_context("nothing here yet") == ""
@@ -37,7 +37,7 @@ async def test_task_context_prefixes_a_task_for_a_real_code_agent() -> None:
 
     from smolagents import CodeAgent
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "The build server is named atlas.", 0.9)
     memory = ActroneSmolagentsMemory("support-bot", "s1", memory_manager=mm)
     user_input = "what is the build server named?"

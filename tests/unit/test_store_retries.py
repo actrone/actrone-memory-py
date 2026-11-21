@@ -38,7 +38,7 @@ def _no_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
         QdrantStore.upsert,
         QdrantStore.search,
     ):
-        monkeypatch.setattr(method.retry, "wait", wait_none())  # type: ignore[attr-defined]
+        monkeypatch.setattr(method.retry, "wait", wait_none())  # type: ignore[union-attr]  # pyright: ignore[reportFunctionMemberAccess]  # tenacity attaches .retry
 
 
 def _turn() -> Turn:

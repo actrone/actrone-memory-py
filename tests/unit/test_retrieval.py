@@ -121,7 +121,7 @@ def test_hybrid_rank_without_query_text_is_classic_blend() -> None:
     assert [e.id for e in ranked] == ["A", "B"]  # pure dense order preserved
 
 
-def test_hybrid_rank_explains_itself_when_no_candidate_carries_an_embedding():
+def test_hybrid_rank_explains_itself_when_no_candidate_carries_an_embedding() -> None:
     """The trap for a custom L2 store: return rows without vectors and get silent zeros.
 
     hybrid_rank recomputes cosine locally, so a store that does not return embeddings would
@@ -150,7 +150,7 @@ def test_hybrid_rank_explains_itself_when_no_candidate_carries_an_embedding():
         )
 
 
-def test_hybrid_rank_stays_quiet_when_some_candidates_simply_miss_the_threshold():
+def test_hybrid_rank_stays_quiet_when_some_candidates_simply_miss_the_threshold() -> None:
     """A genuinely empty result is not an error, only a wholly embeddingless set is."""
     entries = [
         MemoryEntry(

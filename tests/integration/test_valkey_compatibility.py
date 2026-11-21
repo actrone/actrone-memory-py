@@ -16,6 +16,7 @@ Run with: uv run pytest tests/integration/test_valkey_compatibility.py -m integr
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
@@ -36,7 +37,7 @@ _VALKEY_IMAGE = "valkey/valkey:8-alpine"
 
 
 @pytest_asyncio.fixture
-async def valkey_url():
+async def valkey_url() -> AsyncIterator[str]:
     with redis_module.RedisContainer(_VALKEY_IMAGE) as container:
         host = container.get_container_host_ip()
         port = container.get_exposed_port(6379)

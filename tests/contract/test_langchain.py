@@ -271,7 +271,7 @@ async def test_chat_history_works_inside_runnable_with_message_history() -> None
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     history = ActroneChatMessageHistory("support-bot", "s1", memory_manager=mm)
     seen: list[list[str]] = []
 
@@ -285,7 +285,7 @@ async def test_chat_history_works_inside_runnable_with_message_history() -> None
     model = FakeListChatModel(responses=["Two approvals.", "Yes, on Fridays too."])
     chain = RunnableWithMessageHistory(
         prompt | RunnableLambda(capture) | model,
-        lambda _session_id: history,  # type: ignore[arg-type,return-value]
+        lambda _session_id: history,
         input_messages_key="input",
         history_messages_key="history",
     )

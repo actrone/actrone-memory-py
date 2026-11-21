@@ -195,12 +195,14 @@ class QdrantStore:
         """
         from actrone_memory.retrieval import fuse_channels
 
-        filters = [qmodels.FieldCondition(key="agent_id", match=qmodels.MatchValue(value=agent_id))]
+        filters: list[qmodels.Condition] = [
+            qmodels.FieldCondition(key="agent_id", match=qmodels.MatchValue(value=agent_id))
+        ]
         if content_types:
             filters.append(
                 qmodels.FieldCondition(
                     key="content_type",
-                    match=qmodels.MatchAny(any=content_types),
+                    match=qmodels.MatchAny(any=list[str](content_types)),
                 )
             )
 

@@ -191,7 +191,7 @@ def test_the_config_reads_classes_from_the_environment(monkeypatch: pytest.Monke
 
 def test_the_config_rejects_an_unknown_class() -> None:
     with pytest.raises(ValueError, match="redact_sensitivities"):
-        MemoryConfig(redact_sensitivities=["secret"])  # type: ignore[list-item]
+        MemoryConfig(redact_sensitivities=["secret"])  # pyright: ignore[reportArgumentType]  # the invalid value under test
 
 
 @pytest.mark.asyncio
@@ -199,7 +199,7 @@ async def test_the_config_default_reaches_the_adapter_context_string() -> None:
     """Framework adapters render prompts through governed_context, so they inherit the default."""
     from actrone_memory.integrations._context import governed_context
 
-    cfg = MemoryConfig(  # type: ignore[call-arg]
+    cfg = MemoryConfig(
         embedding_provider="hashing", relevance_threshold=0.01, redact_sensitivities=["pii"]
     )
     mm = await MemoryManager.create(cfg, embedder=ConstantEmbedder())

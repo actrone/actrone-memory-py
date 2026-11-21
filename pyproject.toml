@@ -124,6 +124,7 @@ dev = [
     "respx>=0.21,<1",
     "bandit>=1.7,<2",
     "pyyaml>=6.0,<7",  # compat drift-gate + interface canaries (scripts/check_compat.py)
+    "types-PyYAML>=6.0.12",
     # OpenAIEmbedder/FactExtractor unit tests (test_embedder.py, test_extraction.py) and
     # mypy strict-mode import resolution both need the real `openai` package on the path even
     # though it's an opt-in extra for end users. Without this, `pip install -e ".[dev]"`
@@ -165,7 +166,7 @@ exclude = [
   "/scripts",
   "/tests",
   "/dist",
-  "/.pre-commit-config.yaml",
+  "/.githooks",
   "/.env.example",
   "/compatibility.yaml",
   "/uv.lock",
@@ -234,8 +235,29 @@ module = [
     "redis.*",
     "qdrant_client.*",
     "asyncpg.*",
+    "agno.*",
+    "agents",
+    "agents.*",
+    "autogen_agentchat.*",
+    "claude_agent_sdk",
+    "claude_agent_sdk.*",
+    "google",
+    "google.adk",
+    "pydantic_ai",
+    "pydantic_ai.*",
+    "semantic_kernel.*",
+    "smolagents",
+    "smolagents.*",
+    "strands",
+    "strands.*",
 ]
 ignore_missing_imports = true
+
+# The contract tests exercise third-party agent frameworks the type check does not install, so their
+# decorators are Any there; everything else in them is still checked strictly.
+[[tool.mypy.overrides]]
+module = ["tests.contract.*"]
+disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -253,3 +275,32 @@ source = ["src/actrone_memory"]
 # langchain contract tests). Exclude from unit coverage so the threshold
 # measures the core library, not framework glue.
 omit = ["*/integrations/*"]
+
+# Pylance and the pyright CLI read this, so the editor reports what CI's mypy --strict reports: the same
+# Python version, this project's own .venv, and strict mode without pyright's checks that mypy --strict
+# has no counterpart for.
+# CI's mypy checks src and tests, and so does the editor.
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "strict"
+# Missing stub packages: mypy reads those libraries as Any.
+reportMissingTypeStubs = false
+# Values that flow from untyped libraries (pyright's Unknown): mypy --strict reads them as Any.
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportUnknownParameterType = false
+# Underscore names used from tests and sibling modules, and defensive isinstance checks at trust
+# boundaries: no mypy counterpart.
+reportPrivateUsage = false
+reportUnnecessaryIsInstance = false
+# Unused imports and variables: ruff's F401 and F841 report them in CI, and their noqa comments mark
+# the deliberate ones (availability probes).
+reportUnusedImport = false
+reportUnusedVariable = false
+# The optional extras mypy skips per module are often not installed locally: a warning, not an error.
+reportMissingImports = "warning"

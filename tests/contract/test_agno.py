@@ -14,7 +14,7 @@ from actrone_memory.manager import MemoryManager
 
 @pytest.mark.asyncio
 async def test_additional_context_returns_governed_memory_and_empty_when_none() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneAgnoMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     assert await memory.additional_context("nothing here yet") == ""
@@ -39,7 +39,7 @@ async def test_additional_context_reaches_a_real_agno_system_message() -> None:
     pytest.importorskip("agno", reason="agno not installed")
     from agno.agent import Agent
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Escalations page the on-call engineer.", 0.9)
     memory = ActroneAgnoMemory("support-bot", "s1", memory_manager=mm)
     context = await memory.additional_context("how do escalations work")

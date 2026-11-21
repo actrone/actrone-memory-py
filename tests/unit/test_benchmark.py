@@ -24,7 +24,7 @@ _MIN_MRR = 0.80
 
 
 @pytest.mark.asyncio
-async def test_default_dataset_meets_quality_floor():
+async def test_default_dataset_meets_quality_floor() -> None:
     report = await run_eval()
     assert report.n_queries == sum(len(c.queries) for c in DEFAULT_DATASET)
     assert report.recall_at_k >= _MIN_RECALL_AT_5, report.format_table()
@@ -35,7 +35,7 @@ async def test_default_dataset_meets_quality_floor():
 
 
 @pytest.mark.asyncio
-async def test_run_eval_accepts_a_provided_manager():
+async def test_run_eval_accepts_a_provided_manager() -> None:
     mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     try:
         report = await run_eval(manager=mm)
@@ -46,7 +46,7 @@ async def test_run_eval_accepts_a_provided_manager():
 
 
 @pytest.mark.asyncio
-async def test_perfect_and_zero_retrieval_cases():
+async def test_perfect_and_zero_retrieval_cases() -> None:
     case_hit = EvalCase(
         name="hit",
         agent_id="ag",
@@ -58,7 +58,7 @@ async def test_perfect_and_zero_retrieval_cases():
     assert report.mrr == pytest.approx(1.0)
 
 
-def test_format_table_contains_metrics():
+def test_format_table_contains_metrics() -> None:
     report = _aggregate([QueryOutcome("q", ["m1", "m2"], frozenset({"m1"}), latency_ms=1.5)], k=5)
     table = report.format_table()
     assert "recall@5" in table
@@ -69,12 +69,12 @@ def test_format_table_contains_metrics():
 # ── metrics units ────────────────────────────────────────────────────────────
 
 
-def test_query_outcome_hit_rank():
+def test_query_outcome_hit_rank() -> None:
     assert QueryOutcome("q", ["x", "y", "m1"], frozenset({"m1"}), 0.0).hit_rank == 3
     assert QueryOutcome("q", ["x", "y"], frozenset({"m1"}), 0.0).hit_rank is None
 
 
-def test_aggregate_recall_precision_mrr():
+def test_aggregate_recall_precision_mrr() -> None:
     outcomes = [
         # 1 relevant, retrieved at rank 1 → recall 1.0, precision@5 0.2, RR 1.0
         QueryOutcome("q1", ["m1", "a", "b", "c", "d"], frozenset({"m1"}), 1.0),
@@ -87,12 +87,12 @@ def test_aggregate_recall_precision_mrr():
     assert r.mrr == pytest.approx(0.5)
 
 
-def test_aggregate_empty_is_zero():
+def test_aggregate_empty_is_zero() -> None:
     r = _aggregate([], k=5)
     assert r.recall_at_k == 0.0 and r.mrr == 0.0 and r.n_queries == 0
 
 
-def test_percentile_edges():
+def test_percentile_edges() -> None:
     assert _percentile([], 50) == 0.0
     assert _percentile([5.0], 95) == 5.0
     assert _percentile([1.0, 2.0, 3.0, 4.0], 50) == 2.0
@@ -103,7 +103,7 @@ def test_percentile_edges():
 
 
 @pytest.mark.asyncio
-async def test_run_comparison_actrone_beats_naive_baseline():
+async def test_run_comparison_actrone_beats_naive_baseline() -> None:
     """The comparative harness runs the same dataset against multiple systems, and
     Actrone (semantic/keyword ranking) beats the naive recency baseline on recall."""
     mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
@@ -121,5 +121,5 @@ async def test_run_comparison_actrone_beats_naive_baseline():
     assert "actrone" in table and "recall@5" in table
 
 
-def test_format_comparison_empty():
+def test_format_comparison_empty() -> None:
     assert format_comparison({}) == "(no systems)"

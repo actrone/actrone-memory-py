@@ -46,7 +46,7 @@ def _chat_graph(checkpointer: Any) -> Any:
 
 @pytest.mark.asyncio
 async def test_is_a_real_checkpoint_saver_accepted_by_compile() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     checkpointer = ActroneCheckpointer(agent_id="agent-1", memory_manager=mm)
     assert isinstance(checkpointer, BaseCheckpointSaver)
     assert isinstance(checkpointer, ActroneCheckpointer)
@@ -56,7 +56,7 @@ async def test_is_a_real_checkpoint_saver_accepted_by_compile() -> None:
 
 @pytest.mark.asyncio
 async def test_graph_state_resumes_and_turns_are_recorded() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     graph = _chat_graph(ActroneCheckpointer(agent_id="agent-1", memory_manager=mm))
     thread = {"configurable": {"thread_id": "t1"}}
 
@@ -92,7 +92,7 @@ async def test_wraps_a_caller_supplied_saver() -> None:
     except ImportError:  # older LangGraph only has the MemorySaver name
         from langgraph.checkpoint.memory import MemorySaver as Saver
     inner = Saver()
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     graph = _chat_graph(ActroneCheckpointer(agent_id="agent-1", memory_manager=mm, saver=inner))
     await graph.ainvoke({"messages": [("user", "hi")]}, {"configurable": {"thread_id": "t1"}})
     # Graph state went to the supplied saver.

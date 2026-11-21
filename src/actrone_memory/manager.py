@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -36,9 +36,9 @@ from actrone_memory.models import (
     ToolResult,
     Turn,
 )
-from actrone_memory.protocols import L1Store, L2Store
+from actrone_memory.protocols import L1Store, L2Store, Reranker
 from actrone_memory.redaction import redact_memories, resolve_redaction
-from actrone_memory.rerank import CrossEncoderReranker, build_reranker
+from actrone_memory.rerank import build_reranker
 from actrone_memory.tokens import TokenCounter, build_token_counter
 
 if TYPE_CHECKING:
@@ -96,7 +96,7 @@ class MemoryManager:
         config: MemoryConfig,
         summariser: _Summariser | None = None,
         extractor: FactExtractor | None = None,
-        reranker: CrossEncoderReranker | None = None,
+        reranker: Reranker | None = None,
     ) -> None:
         self._l1 = l1
         self._l2 = l2
@@ -767,7 +767,7 @@ class MemoryManager:
         l2: L2Store | None = None,
         embedder: Embedder | None = None,
         extractor: FactExtractor | None = None,
-        reranker: CrossEncoderReranker | None = None,
+        reranker: Reranker | None = None,
     ) -> MemoryManager:
         """Build a ready MemoryManager for the configured backend.
 
@@ -1076,7 +1076,9 @@ def _extractive_summary(text: str, max_chars: int = 800) -> str:
 
 
 @asynccontextmanager
-async def create_memory_manager(config: MemoryConfig | None = None) -> AsyncIterator[MemoryManager]:
+async def create_memory_manager(
+    config: MemoryConfig | None = None,
+) -> AsyncGenerator[MemoryManager, None]:
     """Async context manager that creates and automatically closes a MemoryManager.
 
     Usage::

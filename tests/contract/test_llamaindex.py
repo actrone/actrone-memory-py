@@ -139,7 +139,7 @@ async def test_memory_works_inside_a_real_simple_chat_engine() -> None:
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
     memory = ActroneLlamaMemory("support-bot", "s1", memory_manager=mm)
     engine = SimpleChatEngine.from_defaults(llm=mock_llm(), memory=memory)
@@ -172,7 +172,7 @@ async def test_chat_history_passed_to_the_engine_replaces_the_session() -> None:
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneLlamaMemory("support-bot", "s2", memory_manager=mm)
     engine = SimpleChatEngine.from_defaults(llm=mock_llm(), memory=memory)
     history = [

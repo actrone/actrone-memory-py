@@ -13,6 +13,7 @@ Run with: uv run pytest tests/integration/test_pgvector_store.py -m integration
 from __future__ import annotations
 
 import re
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import pytest_asyncio
@@ -37,7 +38,7 @@ _IMAGE = "pgvector/pgvector:pg16"
 
 def _dsn(container: object) -> str:
     """asyncpg speaks postgresql://, while testcontainers hands back a SQLAlchemy URL."""
-    url = container.get_connection_url()  # type: ignore[attr-defined]
+    url: str = container.get_connection_url()  # type: ignore[attr-defined]
     return url.replace("postgresql+psycopg2://", "postgresql://").replace(
         "postgresql+psycopg://", "postgresql://"
     )
@@ -47,13 +48,13 @@ def _dsn(container: object) -> str:
 # the runtime, and PostgresContainer is a sync context manager, so this avoids the
 # async-fixture scoping dance entirely.
 @pytest.fixture(scope="module")
-def pg_dsn():
+def pg_dsn() -> Iterator[str]:
     with postgres_module.PostgresContainer(_IMAGE) as container:
         yield _dsn(container)
 
 
 @pytest_asyncio.fixture
-async def store(pg_dsn: str, request: pytest.FixtureRequest):
+async def store(pg_dsn: str, request: pytest.FixtureRequest) -> AsyncIterator[PgVectorStore]:
     # One container, but a table per test: sharing the container is a speed optimisation,
     # sharing rows between tests is a correctness bug.
     store = await PgVectorStore.from_dsn(pg_dsn, dimensions=_DIMENSIONS, table=_table_for(request))

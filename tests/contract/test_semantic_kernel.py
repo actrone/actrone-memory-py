@@ -28,7 +28,7 @@ class _FakeChatHistory:
 
 @pytest.mark.asyncio
 async def test_system_message_and_add_to_chat_history() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneSemanticKernelMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     # Tier 1, empty until something relevant exists.
@@ -59,7 +59,7 @@ async def test_add_to_a_real_semantic_kernel_chat_history() -> None:
     pytest.importorskip("semantic_kernel", reason="semantic-kernel not installed")
     from semantic_kernel.contents import ChatHistory
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Tickets are answered within 24 hours.", 0.9)
     memory = ActroneSemanticKernelMemory("support-bot", "s1", memory_manager=mm)
 

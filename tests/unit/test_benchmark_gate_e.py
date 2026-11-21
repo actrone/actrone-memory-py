@@ -7,6 +7,7 @@ verifying the two-call MemorySystem surface maps correctly onto each vendor's AP
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -19,10 +20,10 @@ from actrone_memory.benchmark.dataset import load_cases
 
 
 class _FakeMem0:
-    def add(self, messages: list[dict], user_id: str) -> list[dict]:  # noqa: ARG002
+    def add(self, messages: list[dict[str, Any]], user_id: str) -> list[dict[str, Any]]:  # noqa: ARG002
         return [{"id": "m0-1"}]
 
-    def search(self, query: str, user_id: str, limit: int) -> dict:  # noqa: ARG002
+    def search(self, query: str, user_id: str, limit: int) -> dict[str, Any]:  # noqa: ARG002
         return {"results": [{"id": "m0-1", "memory": "the capital is Paris"}]}
 
 
@@ -36,10 +37,10 @@ async def test_mem0_adapter_maps_add_and_search() -> None:
 
 
 class _FakeZepGraph:
-    def add(self, user_id: str, type: str, data: str) -> dict:  # noqa: A002, ARG002
+    def add(self, user_id: str, type: str, data: str) -> dict[str, Any]:  # noqa: A002, ARG002
         return {"uuid": "z-1"}
 
-    def search(self, user_id: str, query: str, limit: int) -> list[dict]:  # noqa: ARG002
+    def search(self, user_id: str, query: str, limit: int) -> list[dict[str, Any]]:  # noqa: ARG002
         return [{"uuid": "z-1", "fact": "the capital is Paris"}]
 
 
@@ -57,10 +58,10 @@ async def test_zep_adapter_maps_graph_add_and_search() -> None:
 
 
 class _FakePassages:
-    def create(self, agent_id: str, text: str) -> dict:  # noqa: ARG002
+    def create(self, agent_id: str, text: str) -> dict[str, Any]:  # noqa: ARG002
         return {"id": "p-1"}
 
-    def search(self, agent_id: str, query: str) -> list[dict]:  # noqa: ARG002
+    def search(self, agent_id: str, query: str) -> list[dict[str, Any]]:  # noqa: ARG002
         return [{"id": "p-1", "text": "the capital is Paris"}]
 
 

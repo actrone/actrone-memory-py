@@ -15,7 +15,7 @@ from actrone_memory.manager import MemoryManager
 
 @pytest.mark.asyncio
 async def test_instructions_for_prepends_memory_and_passes_through_when_empty() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneOpenAIAgentsMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     # No memory yet ⇒ base instructions returned unchanged.
@@ -39,7 +39,7 @@ async def test_instructions_become_a_real_agents_system_prompt() -> None:
     pytest.importorskip("agents", reason="openai-agents not installed")
     from agents import Agent, RunContextWrapper
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "The customer is on the enterprise plan.", 0.9)
     memory = ActroneOpenAIAgentsMemory("support-bot", "s1", memory_manager=mm)
     instructions = await memory.instructions_for("You are support.", "enterprise plan")

@@ -26,6 +26,7 @@ store that passes here is safe to hand to ``MemoryManager.create(l1=..., l2=...)
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
@@ -392,7 +393,7 @@ async def check_l2_store(
 
 async def _make(factory: Callable[[], Any]) -> Any:  # noqa: ANN401 - generic store factory
     store = factory()
-    if hasattr(store, "__await__"):
+    if inspect.isawaitable(store):
         store = await store
     return store
 
@@ -401,5 +402,5 @@ async def _close(store: Any) -> None:  # noqa: ANN401 - generic store
     closer = getattr(store, "close", None)
     if callable(closer):
         result = closer()
-        if hasattr(result, "__await__"):
+        if inspect.isawaitable(result):
             await result

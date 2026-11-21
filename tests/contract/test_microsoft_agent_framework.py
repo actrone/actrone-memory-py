@@ -43,7 +43,7 @@ def test_pure_message_helpers() -> None:
 
 @pytest.mark.asyncio
 async def test_tier1_context_and_remember() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneAgentFrameworkMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     await mm.inject_memory("support-bot", "The account owner is Jane Doe.", 0.9)
@@ -70,7 +70,7 @@ async def test_native_context_provider_in_a_real_agent_run() -> None:
 
     seen: dict[str, Any] = {}
 
-    class _StubClient(af.BaseChatClient):  # type: ignore[misc]
+    class _StubClient(af.BaseChatClient):  # type: ignore[misc,name-defined]  # a lazily imported framework class
         """Stands in for the LLM: records what the model is sent and replies with fixed text."""
 
         def _inner_get_response(
@@ -84,7 +84,7 @@ async def test_native_context_provider_in_a_real_agent_run() -> None:
 
             return _reply()
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneAgentFrameworkMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
     await mm.inject_memory("support-bot", "The account owner is Jane Doe.", 0.9)
 

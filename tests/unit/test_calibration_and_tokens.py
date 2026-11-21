@@ -61,7 +61,7 @@ class _Declared(Embedder):
 
 
 def _hashing_config(**overrides: Any) -> MemoryConfig:  # noqa: ANN401
-    return MemoryConfig(embedding_provider="hashing", **overrides)  # type: ignore[call-arg]
+    return MemoryConfig(embedding_provider="hashing", **overrides)
 
 
 # ── Threshold precedence ─────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ from actrone_memory.manager import MemoryManager
 
 @pytest.mark.asyncio
 async def test_system_prompt_appends_memory_and_passes_through_when_empty() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneStrandsMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     assert await memory.system_prompt("You are support.", "nothing") == "You are support."
@@ -53,7 +53,7 @@ async def test_system_prompt_lands_on_a_real_strands_agent(
     monkeypatch.delenv("AWS_PROFILE", raising=False)
     from strands import Agent
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Production deploys are frozen on Fridays.", 0.9)
     memory = ActroneStrandsMemory("support-bot", "s1", memory_manager=mm)
     system_prompt = await memory.system_prompt(

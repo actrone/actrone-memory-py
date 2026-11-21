@@ -363,7 +363,8 @@ class PgVectorStore:
             )
         except Exception as exc:
             raise StoreConnectionError("Postgres", exc) from exc
-        if pool is None:  # pragma: no cover - asyncpg returns None only on misuse
+        # asyncpg's stubs say Pool, but awaiting a pool that is already initialising returns None.
+        if pool is None:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison]
             raise StoreConnectionError("Postgres", RuntimeError("asyncpg returned no pool"))
 
         store = cls(pool, table, dimensions, relevance_weight, recency_weight)

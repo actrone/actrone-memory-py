@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from actrone_memory.in_memory import InMemoryStore
-from actrone_memory.models import MemoryEntry, Turn
+from actrone_memory.models import ContentType, MemoryEntry, Turn
 from actrone_memory.testing import ConformanceError, check_l1_store, check_l2_store
 
 _DIMENSIONS = 8
@@ -70,13 +70,13 @@ class _LeakyL1Store(InMemoryStore):
 class _LeakyL2Store(InMemoryStore):
     """Ignores agent_id on search, the worst failure this tier can have."""
 
-    async def search(  # type: ignore[override]
+    async def search(
         self,
         agent_id: str,
         query_embedding: list[float],
         threshold: float,
         limit: int = 20,
-        content_types: list[str] | None = None,
+        content_types: list[ContentType] | None = None,
         query_text: str | None = None,
     ) -> list[MemoryEntry]:
         everything: list[MemoryEntry] = []
@@ -128,13 +128,13 @@ async def test_l2_suite_detects_cross_agent_leakage() -> None:
 @pytest.mark.asyncio
 async def test_l2_suite_detects_a_threshold_that_is_ignored() -> None:
     class _IgnoresThreshold(InMemoryStore):
-        async def search(  # type: ignore[override]
+        async def search(
             self,
             agent_id: str,
             query_embedding: list[float],
             threshold: float,
             limit: int = 20,
-            content_types: list[str] | None = None,
+            content_types: list[ContentType] | None = None,
             query_text: str | None = None,
         ) -> list[MemoryEntry]:
             return list(self._memories.get(agent_id, []))[:limit]

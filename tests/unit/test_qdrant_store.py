@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from actrone_memory.exceptions import MemoryNotFoundError, StoreConnectionError
@@ -38,7 +39,7 @@ def _entry(content: str = "Paris is in France.") -> MemoryEntry:
 
 
 @pytest.mark.asyncio
-async def test_upsert_calls_client_upsert():
+async def test_upsert_calls_client_upsert() -> None:
     client = AsyncMock()
     store = _make_store(client)
     await store.upsert(_entry())
@@ -46,7 +47,7 @@ async def test_upsert_calls_client_upsert():
 
 
 @pytest.mark.asyncio
-async def test_upsert_raises_without_embedding():
+async def test_upsert_raises_without_embedding() -> None:
     client = AsyncMock()
     store = _make_store(client)
     entry = MemoryEntry(agent_id="a", session_id="s", content="x", content_type="turn")
@@ -55,7 +56,7 @@ async def test_upsert_raises_without_embedding():
 
 
 @pytest.mark.asyncio
-async def test_upsert_raises_store_error_on_failure():
+async def test_upsert_raises_store_error_on_failure() -> None:
     client = AsyncMock()
     client.upsert.side_effect = Exception("network error")
     store = _make_store(client)
@@ -69,7 +70,7 @@ async def test_upsert_raises_store_error_on_failure():
 
 
 @pytest.mark.asyncio
-async def test_upsert_batch_skips_entries_without_embedding():
+async def test_upsert_batch_skips_entries_without_embedding() -> None:
     client = AsyncMock()
     store = _make_store(client)
 
@@ -83,7 +84,7 @@ async def test_upsert_batch_skips_entries_without_embedding():
 
 
 @pytest.mark.asyncio
-async def test_upsert_batch_no_op_on_empty_list():
+async def test_upsert_batch_no_op_on_empty_list() -> None:
     client = AsyncMock()
     store = _make_store(client)
     await store.upsert_batch([])
@@ -96,7 +97,7 @@ async def test_upsert_batch_no_op_on_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_search_returns_ranked_entries():
+async def test_search_returns_ranked_entries() -> None:
     client = AsyncMock()
     now_iso = datetime.now(UTC).isoformat()
 
@@ -126,7 +127,7 @@ async def test_search_returns_ranked_entries():
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_client_error():
+async def test_search_raises_on_client_error() -> None:
     client = AsyncMock()
     client.query_points.side_effect = Exception("timeout")
     store = _make_store(client)
@@ -141,7 +142,7 @@ async def test_search_raises_on_client_error():
 
 
 @pytest.mark.asyncio
-async def test_delete_calls_client_delete():
+async def test_delete_calls_client_delete() -> None:
     client = AsyncMock()
     store = _make_store(client)
     await store.delete("mem-123")
@@ -149,7 +150,7 @@ async def test_delete_calls_client_delete():
 
 
 @pytest.mark.asyncio
-async def test_delete_raises_store_error_on_failure():
+async def test_delete_raises_store_error_on_failure() -> None:
     client = AsyncMock()
     client.delete.side_effect = Exception("error")
     store = _make_store(client)
@@ -163,7 +164,7 @@ async def test_delete_raises_store_error_on_failure():
 
 
 @pytest.mark.asyncio
-async def test_delete_agent_memories_calls_client():
+async def test_delete_agent_memories_calls_client() -> None:
     client = AsyncMock()
     store = _make_store(client)
     await store.delete_agent_memories("agent-1")
@@ -171,7 +172,7 @@ async def test_delete_agent_memories_calls_client():
 
 
 @pytest.mark.asyncio
-async def test_delete_agent_memories_raises_on_failure():
+async def test_delete_agent_memories_raises_on_failure() -> None:
     client = AsyncMock()
     client.delete.side_effect = Exception("error")
     store = _make_store(client)
@@ -185,7 +186,7 @@ async def test_delete_agent_memories_raises_on_failure():
 
 
 @pytest.mark.asyncio
-async def test_ensure_collection_creates_when_missing():
+async def test_ensure_collection_creates_when_missing() -> None:
     client = AsyncMock()
     client.collection_exists.return_value = False
     store = _make_store(client)
@@ -194,7 +195,7 @@ async def test_ensure_collection_creates_when_missing():
 
 
 @pytest.mark.asyncio
-async def test_ensure_collection_skips_when_exists():
+async def test_ensure_collection_skips_when_exists() -> None:
     client = AsyncMock()
     client.collection_exists.return_value = True
     store = _make_store(client)
@@ -203,7 +204,7 @@ async def test_ensure_collection_skips_when_exists():
 
 
 @pytest.mark.asyncio
-async def test_ensure_collection_raises_on_error():
+async def test_ensure_collection_raises_on_error() -> None:
     client = AsyncMock()
     client.collection_exists.side_effect = Exception("network error")
     store = _make_store(client)
@@ -217,7 +218,7 @@ async def test_ensure_collection_raises_on_error():
 
 
 @pytest.mark.asyncio
-async def test_upsert_batch_raises_on_client_error():
+async def test_upsert_batch_raises_on_client_error() -> None:
     client = AsyncMock()
     client.upsert.side_effect = Exception("timeout")
     store = _make_store(client)
@@ -231,12 +232,12 @@ async def test_upsert_batch_raises_on_client_error():
 
 
 @pytest.mark.asyncio
-async def test_delete_raises_memory_not_found_on_404():
+async def test_delete_raises_memory_not_found_on_404() -> None:
     from qdrant_client.http.exceptions import UnexpectedResponse
 
     client = AsyncMock()
     not_found = UnexpectedResponse(
-        status_code=404, reason_phrase="Not Found", content=b"", headers={}
+        status_code=404, reason_phrase="Not Found", content=b"", headers=httpx.Headers()
     )
     client.delete.side_effect = not_found
     store = _make_store(client)
@@ -252,7 +253,7 @@ async def test_delete_raises_memory_not_found_on_404():
 
 
 @pytest.mark.asyncio
-async def test_close_calls_client_close():
+async def test_close_calls_client_close() -> None:
     client = AsyncMock()
     store = _make_store(client)
     await store.close()
@@ -265,7 +266,7 @@ async def test_close_calls_client_close():
 
 
 @pytest.mark.asyncio
-async def test_from_url_raises_on_connection_error():
+async def test_from_url_raises_on_connection_error() -> None:
     with patch("actrone_memory.l2.qdrant_store.AsyncQdrantClient") as mock_cls:
         mock_client = AsyncMock()
         mock_client.collection_exists.side_effect = Exception("refused")

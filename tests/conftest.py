@@ -5,6 +5,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
 
 from actrone_memory.config import MemoryConfig
 from actrone_memory.l2.embedder import Embedder
@@ -57,7 +58,7 @@ def fake_config() -> MemoryConfig:
         redis_url="redis://localhost:6379",
         qdrant_url="http://localhost:6333",
         embedding_provider="openai",
-        openai_api_key="sk-test",  # type: ignore[arg-type]
+        openai_api_key=SecretStr("sk-test"),
         session_ttl_hours=1,
         max_session_turns=10,
         relevance_threshold=0.72,

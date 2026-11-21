@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 from collections.abc import Callable, Coroutine
-from typing import Any, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 from actrone_memory.config import MemoryConfig
 from actrone_memory.integrations._context import format_memories
@@ -109,6 +109,12 @@ class ActroneRetriever:
         memories = await mm.search_memories(self._agent_id, query, limit=top_k or self._top_k)
         return format_memories(memories)
 
+    if TYPE_CHECKING:
+        # Attached when the real Haystack component class is built (_retriever_methods).
+        def run(self, query: str, top_k: int | None = None) -> dict[str, Any]: ...
+
+        async def run_async(self, query: str, top_k: int | None = None) -> dict[str, Any]: ...
+
     async def _retrieve(self, query: str, top_k: int | None = None) -> dict[str, Any]:
         from haystack.dataclasses import Document
 
@@ -175,6 +181,12 @@ class ActroneWriter:
         if self._mm is None:
             self._mm = await MemoryManager.create(self._config)
         return self._mm
+
+    if TYPE_CHECKING:
+        # Attached when the real Haystack component class is built (_writer_methods).
+        def run(self, user_message: str, assistant_message: str) -> dict[str, Any]: ...
+
+        async def run_async(self, user_message: str, assistant_message: str) -> dict[str, Any]: ...
 
     async def _write(self, user_message: str, assistant_message: str) -> dict[str, Any]:
         mm = await self._get_manager()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from actrone_memory.models import ContentType, MemoryEntry, SessionMetadata, Turn
@@ -61,3 +62,17 @@ class L2Store(Protocol):
     async def delete_agent_memories(self, agent_id: str) -> None: ...
 
     async def close(self) -> None: ...
+
+
+@runtime_checkable
+class Reranker(Protocol):
+    """Reorders retrieved memories by their relevance to the query.
+
+    :class:`~actrone_memory.rerank.CrossEncoderReranker` implements it; pass any object with the
+    same method as ``MemoryManager(reranker=...)`` to rerank another way. Only the first ``top_k``
+    entries need rescoring; the result must be a permutation of ``entries``.
+    """
+
+    async def rerank(
+        self, query: str, entries: Sequence[MemoryEntry], *, top_k: int | None = None
+    ) -> list[MemoryEntry]: ...

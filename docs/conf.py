@@ -43,3 +43,7 @@ html_title = "Actrone Memory (Python)"
 # build-sdk-reference script). Setting the base URL makes Sphinx emit a canonical link on every page,
 # so search engines index the reference under its public URL rather than guessing.
 html_baseurl = "https://actrone.com/reference/memory-py/"
+
+# Smart quotes and ellipses, but no dash conversion: the brand uses no em or en dashes, and Sphinx
+# would otherwise turn the `--` between a parameter and its description into one.
+smartquotes_action = "qe"

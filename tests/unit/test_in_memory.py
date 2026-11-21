@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from actrone_memory.config import MemoryConfig
@@ -23,7 +25,7 @@ def _turn(session_id: str = "s1", *, tokens: int = 10, msg: str = "hi") -> Turn:
 def _entry(
     agent_id: str, content: str, embedding: list[float], *, mem_id: str | None = None
 ) -> MemoryEntry:
-    kwargs: dict[str, object] = {}
+    kwargs: dict[str, Any] = {}
     if mem_id is not None:
         kwargs["id"] = mem_id
     return MemoryEntry(
@@ -33,7 +35,7 @@ def _entry(
         content_type="injected",
         embedding=embedding,
         token_count=5,
-        **kwargs,  # type: ignore[arg-type]
+        **kwargs,
     )
 
 
@@ -42,7 +44,7 @@ def _entry(
 # ------------------------------------------------------------------
 
 
-def test_in_memory_store_satisfies_both_protocols():
+def test_in_memory_store_satisfies_both_protocols() -> None:
     store = InMemoryStore()
     assert isinstance(store, L1Store)
     assert isinstance(store, L2Store)
@@ -53,19 +55,19 @@ def test_in_memory_store_satisfies_both_protocols():
 # ------------------------------------------------------------------
 
 
-def test_cosine_identical_vectors_is_one():
+def test_cosine_identical_vectors_is_one() -> None:
     assert cosine_similarity([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) == pytest.approx(1.0)
 
 
-def test_cosine_orthogonal_vectors_is_zero():
+def test_cosine_orthogonal_vectors_is_zero() -> None:
     assert cosine_similarity([1.0, 0.0], [0.0, 1.0]) == pytest.approx(0.0)
 
 
-def test_cosine_zero_vector_is_zero():
+def test_cosine_zero_vector_is_zero() -> None:
     assert cosine_similarity([0.0, 0.0], [1.0, 1.0]) == 0.0
 
 
-def test_cosine_tolerates_length_mismatch():
+def test_cosine_tolerates_length_mismatch() -> None:
     # Compares the shared prefix, must not raise.
     assert cosine_similarity([1.0, 0.0, 5.0], [1.0, 0.0]) == pytest.approx(1.0)
 
@@ -76,7 +78,7 @@ def test_cosine_tolerates_length_mismatch():
 
 
 @pytest.mark.asyncio
-async def test_append_and_get_recent_turns():
+async def test_append_and_get_recent_turns() -> None:
     store = InMemoryStore()
     await store.append_turn("a1", "s1", _turn(msg="one"))
     await store.append_turn("a1", "s1", _turn(msg="two"))
@@ -86,7 +88,7 @@ async def test_append_and_get_recent_turns():
 
 
 @pytest.mark.asyncio
-async def test_get_recent_turns_limit_returns_newest():
+async def test_get_recent_turns_limit_returns_newest() -> None:
     store = InMemoryStore()
     for i in range(5):
         await store.append_turn("a1", "s1", _turn(msg=f"m{i}"))
@@ -95,7 +97,7 @@ async def test_get_recent_turns_limit_returns_newest():
 
 
 @pytest.mark.asyncio
-async def test_max_turns_cap_evicts_oldest():
+async def test_max_turns_cap_evicts_oldest() -> None:
     store = InMemoryStore(max_turns=3)
     for i in range(5):
         await store.append_turn("a1", "s1", _turn(msg=f"m{i}"))
@@ -104,7 +106,7 @@ async def test_max_turns_cap_evicts_oldest():
 
 
 @pytest.mark.asyncio
-async def test_sessions_are_isolated_by_agent_and_session():
+async def test_sessions_are_isolated_by_agent_and_session() -> None:
     store = InMemoryStore()
     await store.append_turn("a1", "s1", _turn())
     assert await store.turn_count("a1", "s2") == 0
@@ -112,7 +114,7 @@ async def test_sessions_are_isolated_by_agent_and_session():
 
 
 @pytest.mark.asyncio
-async def test_clear_session_removes_turns_and_meta():
+async def test_clear_session_removes_turns_and_meta() -> None:
     store = InMemoryStore()
     await store.append_turn("a1", "s1", _turn())
     await store.clear_session("a1", "s1")
@@ -121,13 +123,13 @@ async def test_clear_session_removes_turns_and_meta():
 
 
 @pytest.mark.asyncio
-async def test_session_metadata_none_for_missing_session():
+async def test_session_metadata_none_for_missing_session() -> None:
     store = InMemoryStore()
     assert await store.get_session_metadata("a1", "nope") is None
 
 
 @pytest.mark.asyncio
-async def test_session_metadata_reports_counts_and_timestamps():
+async def test_session_metadata_reports_counts_and_timestamps() -> None:
     store = InMemoryStore()
     await store.append_turn("a1", "s1", _turn())
     await store.append_turn("a1", "s1", _turn())
@@ -139,7 +141,7 @@ async def test_session_metadata_reports_counts_and_timestamps():
 
 
 @pytest.mark.asyncio
-async def test_summary_lock_is_exclusive_within_ttl():
+async def test_summary_lock_is_exclusive_within_ttl() -> None:
     store = InMemoryStore()
     assert await store.try_acquire_summary_lock("a1", "s1", ttl_seconds=60) is True
     # Second attempt within the window is refused.
@@ -149,7 +151,7 @@ async def test_summary_lock_is_exclusive_within_ttl():
 
 
 @pytest.mark.asyncio
-async def test_summary_lock_reacquirable_after_expiry(monkeypatch: pytest.MonkeyPatch):
+async def test_summary_lock_reacquirable_after_expiry(monkeypatch: pytest.MonkeyPatch) -> None:
     store = InMemoryStore()
     clock = {"t": 1000.0}
     monkeypatch.setattr("actrone_memory.in_memory.time.monotonic", lambda: clock["t"])
@@ -164,7 +166,7 @@ async def test_summary_lock_reacquirable_after_expiry(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
-async def test_upsert_requires_embedding():
+async def test_upsert_requires_embedding() -> None:
     store = InMemoryStore()
     entry = MemoryEntry(
         agent_id="a1", session_id="s1", content="x", content_type="injected", token_count=1
@@ -174,7 +176,7 @@ async def test_upsert_requires_embedding():
 
 
 @pytest.mark.asyncio
-async def test_upsert_replaces_same_id():
+async def test_upsert_replaces_same_id() -> None:
     store = InMemoryStore()
     await store.upsert(_entry("a1", "first", [1.0, 0.0], mem_id="m1"))
     await store.upsert(_entry("a1", "second", [1.0, 0.0], mem_id="m1"))
@@ -184,7 +186,7 @@ async def test_upsert_replaces_same_id():
 
 
 @pytest.mark.asyncio
-async def test_search_filters_by_threshold_and_agent():
+async def test_search_filters_by_threshold_and_agent() -> None:
     store = InMemoryStore()
     await store.upsert(_entry("a1", "match", [1.0, 0.0]))
     await store.upsert(_entry("a1", "orthogonal", [0.0, 1.0]))
@@ -196,7 +198,7 @@ async def test_search_filters_by_threshold_and_agent():
 
 
 @pytest.mark.asyncio
-async def test_search_respects_limit_and_ranks_by_similarity():
+async def test_search_respects_limit_and_ranks_by_similarity() -> None:
     store = InMemoryStore()
     await store.upsert(_entry("a1", "exact", [1.0, 0.0]))
     await store.upsert(_entry("a1", "close", [0.9, 0.1]))
@@ -206,7 +208,7 @@ async def test_search_respects_limit_and_ranks_by_similarity():
 
 
 @pytest.mark.asyncio
-async def test_search_content_type_filter():
+async def test_search_content_type_filter() -> None:
     store = InMemoryStore()
     e = _entry("a1", "summary-only", [1.0, 0.0])
     e_summary = MemoryEntry(
@@ -226,13 +228,13 @@ async def test_search_content_type_filter():
 
 
 @pytest.mark.asyncio
-async def test_search_empty_agent_returns_empty():
+async def test_search_empty_agent_returns_empty() -> None:
     store = InMemoryStore()
     assert await store.search("unknown", [1.0, 0.0], threshold=0.0, limit=10) == []
 
 
 @pytest.mark.asyncio
-async def test_delete_removes_and_missing_raises():
+async def test_delete_removes_and_missing_raises() -> None:
     store = InMemoryStore()
     await store.upsert(_entry("a1", "x", [1.0, 0.0], mem_id="m1"))
     await store.delete("m1")
@@ -242,7 +244,7 @@ async def test_delete_removes_and_missing_raises():
 
 
 @pytest.mark.asyncio
-async def test_delete_agent_memories():
+async def test_delete_agent_memories() -> None:
     store = InMemoryStore()
     await store.upsert(_entry("a1", "x", [1.0, 0.0]))
     await store.delete_agent_memories("a1")
@@ -250,7 +252,7 @@ async def test_delete_agent_memories():
 
 
 @pytest.mark.asyncio
-async def test_close_is_noop():
+async def test_close_is_noop() -> None:
     store = InMemoryStore()
     await store.close()  # must not raise
 
@@ -261,7 +263,7 @@ async def test_close_is_noop():
 
 
 @pytest.mark.asyncio
-async def test_local_first_create_needs_no_services_or_key():
+async def test_local_first_create_needs_no_services_or_key() -> None:
     """The headline parity guarantee: create() with all-default config runs with
     no Redis, no Qdrant, and no API key, and completes a full store→retrieve cycle."""
     cfg = MemoryConfig()  # defaults: backend="memory", provider="local"
@@ -286,7 +288,7 @@ async def test_local_first_create_needs_no_services_or_key():
 
 
 @pytest.mark.asyncio
-async def test_local_first_uses_in_memory_store_instances(monkeypatch: pytest.MonkeyPatch):
+async def test_local_first_uses_in_memory_store_instances(monkeypatch: pytest.MonkeyPatch) -> None:
     # The base install, with neither dense extra: the graceful local chain lands on hashing. Both
     # dense tiers are made unavailable explicitly, so the result does not depend on which extras
     # happen to be installed (with `[onnx]` present the chain rightly picks FastEmbed instead).
@@ -311,7 +313,7 @@ async def test_local_first_uses_in_memory_store_instances(monkeypatch: pytest.Mo
 
 
 @pytest.mark.asyncio
-async def test_injected_fact_carries_provenance_end_to_end():
+async def test_injected_fact_carries_provenance_end_to_end() -> None:
     async with await MemoryManager.create(MemoryConfig()) as mm:
         await mm.inject_memory(
             "agent-1",
@@ -326,7 +328,7 @@ async def test_injected_fact_carries_provenance_end_to_end():
 
 
 @pytest.mark.asyncio
-async def test_provenance_defaults_are_backwards_compatible():
+async def test_provenance_defaults_are_backwards_compatible() -> None:
     entry = MemoryEntry(
         agent_id="a",
         session_id="s",
@@ -340,7 +342,7 @@ async def test_provenance_defaults_are_backwards_compatible():
 
 
 @pytest.mark.asyncio
-async def test_erase_agent_memories_wipes_l2():
+async def test_erase_agent_memories_wipes_l2() -> None:
     async with await MemoryManager.create(MemoryConfig()) as mm:
         await mm.store_turn("agent-1", "s1", "hi", "hello")
         await mm.inject_memory("agent-1", "a durable fact about the user", sensitivity="low")
@@ -353,7 +355,7 @@ async def test_erase_agent_memories_wipes_l2():
 
 
 @pytest.mark.asyncio
-async def test_summarised_memory_source_is_summary():
+async def test_summarised_memory_source_is_summary() -> None:
     store = InMemoryStore()
     # Low threshold so the keyword-overlap summary is retrievable via the hashing embedder.
     cfg = MemoryConfig(auto_summarise=False, summarise_after_turns=2, relevance_threshold=0.1)

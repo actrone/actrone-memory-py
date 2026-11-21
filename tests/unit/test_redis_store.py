@@ -38,11 +38,11 @@ def _turn(session_id: str = "s1") -> Turn:
 # ------------------------------------------------------------------
 
 
-def test_turns_key():
+def test_turns_key() -> None:
     assert RedisStore._turns_key("agent-1", "sess-1") == "agent:agent-1:session:sess-1:turns"
 
 
-def test_meta_key():
+def test_meta_key() -> None:
     assert RedisStore._meta_key("agent-1", "sess-1") == "agent:agent-1:session:sess-1:meta"
 
 
@@ -52,7 +52,7 @@ def test_meta_key():
 
 
 @pytest.mark.asyncio
-async def test_append_turn_executes_pipeline():
+async def test_append_turn_executes_pipeline() -> None:
     # pipeline() is synchronous in redis-py, use MagicMock, not AsyncMock
     pipe = MagicMock()
     pipe.execute = AsyncMock(return_value=[1, None, True, None, 1, True])
@@ -69,7 +69,7 @@ async def test_append_turn_executes_pipeline():
 
 
 @pytest.mark.asyncio
-async def test_append_turn_raises_on_redis_error():
+async def test_append_turn_raises_on_redis_error() -> None:
     redis = _make_redis()
     redis.pipeline.side_effect = RedisError("connection refused")
 
@@ -86,7 +86,7 @@ async def test_append_turn_raises_on_redis_error():
 
 
 @pytest.mark.asyncio
-async def test_get_recent_turns_deserialises_correctly():
+async def test_get_recent_turns_deserialises_correctly() -> None:
     turn = _turn()
     redis = _make_redis()
     redis.lrange.return_value = [turn.model_dump_json().encode()]
@@ -100,7 +100,7 @@ async def test_get_recent_turns_deserialises_correctly():
 
 
 @pytest.mark.asyncio
-async def test_get_recent_turns_returns_empty_on_no_data():
+async def test_get_recent_turns_returns_empty_on_no_data() -> None:
     redis = _make_redis()
     store = _make_store(redis)
     turns = await store.get_recent_turns("agent-1", "s1")
@@ -108,7 +108,7 @@ async def test_get_recent_turns_returns_empty_on_no_data():
 
 
 @pytest.mark.asyncio
-async def test_get_recent_turns_raises_on_redis_error():
+async def test_get_recent_turns_raises_on_redis_error() -> None:
     redis = _make_redis()
     redis.lrange.side_effect = RedisError("timeout")
 
@@ -123,7 +123,7 @@ async def test_get_recent_turns_raises_on_redis_error():
 
 
 @pytest.mark.asyncio
-async def test_clear_session_deletes_both_keys():
+async def test_clear_session_deletes_both_keys() -> None:
     redis = _make_redis()
     store = _make_store(redis)
     await store.clear_session("agent-1", "s1")
@@ -135,7 +135,7 @@ async def test_clear_session_deletes_both_keys():
 
 
 @pytest.mark.asyncio
-async def test_clear_session_raises_on_redis_error():
+async def test_clear_session_raises_on_redis_error() -> None:
     redis = _make_redis()
     redis.delete.side_effect = RedisError("error")
 
@@ -150,7 +150,7 @@ async def test_clear_session_raises_on_redis_error():
 
 
 @pytest.mark.asyncio
-async def test_get_session_metadata_returns_none_when_empty():
+async def test_get_session_metadata_returns_none_when_empty() -> None:
     redis = _make_redis()
     store = _make_store(redis)
     meta = await store.get_session_metadata("agent-1", "s1")
@@ -158,7 +158,7 @@ async def test_get_session_metadata_returns_none_when_empty():
 
 
 @pytest.mark.asyncio
-async def test_get_session_metadata_parses_correctly():
+async def test_get_session_metadata_parses_correctly() -> None:
     redis = _make_redis()
     redis.hgetall.return_value = {
         b"agent_id": b"agent-1",
@@ -182,7 +182,7 @@ async def test_get_session_metadata_parses_correctly():
 
 
 @pytest.mark.asyncio
-async def test_turn_count_returns_llen():
+async def test_turn_count_returns_llen() -> None:
     redis = _make_redis()
     redis.llen.return_value = 7
 
@@ -192,7 +192,7 @@ async def test_turn_count_returns_llen():
 
 
 @pytest.mark.asyncio
-async def test_turn_count_raises_on_redis_error():
+async def test_turn_count_raises_on_redis_error() -> None:
     redis = _make_redis()
     redis.llen.side_effect = RedisError("timeout")
 
@@ -207,7 +207,7 @@ async def test_turn_count_raises_on_redis_error():
 
 
 @pytest.mark.asyncio
-async def test_get_session_metadata_raises_on_redis_error():
+async def test_get_session_metadata_raises_on_redis_error() -> None:
     redis = _make_redis()
     redis.hgetall.side_effect = RedisError("connection lost")
 
@@ -222,7 +222,7 @@ async def test_get_session_metadata_raises_on_redis_error():
 
 
 @pytest.mark.asyncio
-async def test_close_calls_aclose():
+async def test_close_calls_aclose() -> None:
     redis = _make_redis()
     redis.aclose = AsyncMock()
 
@@ -237,7 +237,7 @@ async def test_close_calls_aclose():
 
 
 @pytest.mark.asyncio
-async def test_from_url_raises_on_ping_failure():
+async def test_from_url_raises_on_ping_failure() -> None:
     with (
         patch("actrone_memory.l1.redis_store.Redis") as mock_redis_cls,
         patch("actrone_memory.l1.redis_store.ConnectionPool") as mock_pool_cls,

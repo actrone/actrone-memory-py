@@ -8,6 +8,8 @@ and the retrieval-shaped ``format_memories`` path).
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from actrone_memory.config import MemoryConfig
@@ -42,8 +44,8 @@ def test_format_memories_renders_bulleted_block() -> None:
     assert "- Water boils." in block
 
 
-def _ctx(**overrides: object) -> RetrievedContext:
-    base: dict[str, object] = {
+def _ctx(**overrides: Any) -> RetrievedContext:
+    base: dict[str, Any] = {
         "recent_turns": [],
         "episodic_memories": [],
         "total_tokens_used": 0,
@@ -51,7 +53,7 @@ def _ctx(**overrides: object) -> RetrievedContext:
         "retrieval_duration_ms": 0.0,
     }
     base.update(overrides)
-    return RetrievedContext(**base)  # type: ignore[arg-type]
+    return RetrievedContext(**base)
 
 
 def test_format_memory_context_empty_when_nothing_relevant() -> None:
@@ -67,7 +69,7 @@ def test_format_memory_context_orders_memory_then_conversation() -> None:
 @pytest.mark.asyncio
 async def test_governed_context_empty_then_populated() -> None:
     # relevance_threshold low enough that the injected memory surfaces for a loosely-related query.
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     try:
         assert await governed_context(mm, "agent-1", "s1", "anything at all") == ""
 

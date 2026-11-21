@@ -45,7 +45,7 @@ from actrone_memory.models import (
     ToolResult,
     Turn,
 )
-from actrone_memory.protocols import L1Store, L2Store
+from actrone_memory.protocols import L1Store, L2Store, Reranker
 from actrone_memory.redaction import SENSITIVITIES, redacted_content
 
 __version__ = "0.3.0"
@@ -79,6 +79,7 @@ __all__ = [
     "OpenAIEmbedder",
     "L1Store",
     "L2Store",
+    "Reranker",
     "ActroneMemoryError",
     "ConfigurationError",
     "EmbeddingError",

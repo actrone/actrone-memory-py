@@ -128,7 +128,7 @@ def test_configured_rm_works_through_dspy_retrieve() -> None:
     from actrone_memory.config import MemoryConfig
     from actrone_memory.manager import MemoryManager
 
-    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))  # type: ignore[call-arg]
+    mm = asyncio.run(MemoryManager.create(MemoryConfig(relevance_threshold=0.05)))
     asyncio.run(mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9))
     rm = ActroneRM("support-bot", k=3, memory_manager=mm)
 

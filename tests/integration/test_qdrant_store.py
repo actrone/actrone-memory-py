@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Iterator
+
 import pytest
 import pytest_asyncio
 from testcontainers.community.qdrant import QdrantContainer
@@ -9,13 +11,13 @@ from actrone_memory.models import MemoryEntry
 
 
 @pytest.fixture(scope="module")
-def qdrant_url():
+def qdrant_url() -> Iterator[str]:
     with QdrantContainer("qdrant/qdrant:v1.20.0") as container:
         yield f"http://{container.get_container_host_ip()}:{container.get_exposed_port(6333)}"
 
 
 @pytest_asyncio.fixture
-async def store(qdrant_url: str) -> QdrantStore:
+async def store(qdrant_url: str) -> AsyncIterator[QdrantStore]:
     s = await QdrantStore.from_url(
         qdrant_url,
         collection="test_memories",
@@ -40,7 +42,7 @@ def _entry(agent_id: str = "agent-1", content: str = "Paris is in France.") -> M
 
 
 @pytest.mark.asyncio
-async def test_upsert_and_search(store: QdrantStore):
+async def test_upsert_and_search(store: QdrantStore) -> None:
     entry = _entry()
     await store.upsert(entry)
 
@@ -54,7 +56,7 @@ async def test_upsert_and_search(store: QdrantStore):
 
 
 @pytest.mark.asyncio
-async def test_search_respects_agent_id_filter(store: QdrantStore):
+async def test_search_respects_agent_id_filter(store: QdrantStore) -> None:
     await store.upsert(_entry(agent_id="agent-A", content="A's memory"))
     await store.upsert(_entry(agent_id="agent-B", content="B's memory"))
 
@@ -67,7 +69,7 @@ async def test_search_respects_agent_id_filter(store: QdrantStore):
 
 
 @pytest.mark.asyncio
-async def test_delete_memory(store: QdrantStore):
+async def test_delete_memory(store: QdrantStore) -> None:
     entry = _entry(content="to be deleted")
     await store.upsert(entry)
     await store.delete(entry.id)
@@ -81,7 +83,7 @@ async def test_delete_memory(store: QdrantStore):
 
 
 @pytest.mark.asyncio
-async def test_upsert_requires_embedding():
+async def test_upsert_requires_embedding() -> None:
     from actrone_memory.l2.qdrant_store import QdrantStore
 
     entry = MemoryEntry(agent_id="a", session_id="s", content="no embed", content_type="turn")
@@ -91,7 +93,7 @@ async def test_upsert_requires_embedding():
 
 
 @pytest.mark.asyncio
-async def test_delete_agent_memories(store: QdrantStore):
+async def test_delete_agent_memories(store: QdrantStore) -> None:
     for i in range(3):
         await store.upsert(_entry(agent_id="bulk-agent", content=f"memory {i}"))
 

@@ -14,7 +14,7 @@ from actrone_memory.manager import MemoryManager
 
 @pytest.mark.asyncio
 async def test_append_to_system_prompt_appends_memory_and_passes_through_when_empty() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActroneClaudeAgentMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     assert await memory.append_to_system_prompt("You are support.", "nothing") == "You are support."
@@ -39,7 +39,7 @@ async def test_system_prompt_lands_on_real_claude_agent_options() -> None:
     pytest.importorskip("claude_agent_sdk", reason="claude-agent-sdk not installed")
     from claude_agent_sdk import ClaudeAgentOptions
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Refunds over 500 need manager approval.", 0.9)
     memory = ActroneClaudeAgentMemory("support-bot", "s1", memory_manager=mm)
     system_prompt = await memory.append_to_system_prompt("You are support.", "refunds policy")

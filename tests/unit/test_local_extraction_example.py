@@ -62,7 +62,9 @@ class _ChatCompletions(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(reply)
 
-    def log_message(self, *_args: Any) -> None:  # keep the test output clean
+    def log_message(
+        self, format: str, *args: Any
+    ) -> None:  # the base class names it format; keep the test output clean
         return
 
 

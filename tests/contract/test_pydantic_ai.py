@@ -16,7 +16,7 @@ from actrone_memory.manager import MemoryManager
 
 @pytest.mark.asyncio
 async def test_system_prompt_returns_governed_memory_and_empty_when_none() -> None:
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     memory = ActronePydanticAIMemory(agent_id="support-bot", session_id="s1", memory_manager=mm)
 
     assert await memory.system_prompt("nothing here yet") == ""
@@ -46,12 +46,12 @@ async def test_memory_reaches_the_model_through_a_real_dynamic_system_prompt() -
         )
         return ModelResponse(parts=[TextPart("Two approvals.")])
 
-    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))  # type: ignore[call-arg]
+    mm = await MemoryManager.create(MemoryConfig(relevance_threshold=0.05))
     await mm.inject_memory("support-bot", "Deploys need two approvals.", 0.9)
     memory = ActronePydanticAIMemory("support-bot", "s1", memory_manager=mm)
     agent = Agent(FunctionModel(model), deps_type=str)
 
-    @agent.system_prompt
+    @agent.system_prompt  # pyright: ignore[reportUntypedFunctionDecorator]  # pydantic_ai is absent from the check
     async def with_memory(ctx: RunContext[str]) -> str:
         return await memory.system_prompt(ctx.deps)
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 import functools
 import time
 from collections.abc import Callable, Coroutine
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, TypeVar, cast
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
@@ -77,17 +77,13 @@ retrieve_context_duration_seconds = Histogram(
     registry=REGISTRY,
 )
 
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-
-# The store Protocols declare `async def`, so the decorator must hand back a
-# coroutine function. A plain Awaitable return would not satisfy them.
-_StoreMethod = Callable[_P, Coroutine[Any, Any, _R]]
+# The store Protocols declare `async def`, so the decorator hands back the exact type of the
+# coroutine function it wraps: a decorated store method keeps its own signature and still
+# satisfies them.
+_StoreFn = TypeVar("_StoreFn", bound=Callable[..., Coroutine[Any, Any, Any]])
 
 
-def track_store_op(
-    tier: str, operation: str
-) -> Callable[[_StoreMethod[_P, _R]], _StoreMethod[_P, _R]]:
+def track_store_op(tier: str, operation: str) -> Callable[[_StoreFn], _StoreFn]:
     """Decorate a store method so its latency and outcome are recorded.
 
     Without this, ``store_op_duration_seconds`` and ``store_op_total`` are
@@ -99,9 +95,9 @@ def track_store_op(
     which is what an error rate should count: work actually sent to the store.
     """
 
-    def decorate(fn: _StoreMethod[_P, _R]) -> _StoreMethod[_P, _R]:
+    def decorate(fn: _StoreFn) -> _StoreFn:
         @functools.wraps(fn)
-        async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             start = time.perf_counter()
             outcome = "success"
             try:
@@ -115,7 +111,8 @@ def track_store_op(
                 store_op_duration_seconds.labels(**labels).observe(elapsed)
                 store_op_total.labels(**labels).inc()
 
-        return wrapper
+        # The wrapper takes and returns exactly what fn does (functools.wraps copies its metadata).
+        return cast("_StoreFn", wrapper)
 
     return decorate
 
