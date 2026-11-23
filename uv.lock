@@ -286,12 +286,13 @@ wheels = [
 
 [[package]]
 name = "agno"
-version = "1.8.4"
+version = "2.6.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docstring-parser" },
     { name = "gitpython" },
-    { name = "httpx" },
+    { name = "h11" },
+    { name = "httpx", extra = ["http2"] },
     { name = "packaging" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -299,14 +300,13 @@ dependencies = [
     { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "rich" },
-    { name = "tomli" },
     { name = "typer" },
     { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
     { name = "typing-extensions", version = "4.16.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/69/73/f3a7e5204c926d9683a78ae70858798c83c96e3c354bd529a2ca85e4d55c/agno-1.8.4.tar.gz", hash = "sha256:9b0af08c6de5e259a637c73d60c58464c55d102bab1b6e6f9b6dd3770a22501b", size = 754007, upload-time = "2025-09-25T18:39:52.804Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fa/b7/17c737b7a482b204eeb287e2c1616ed4abea93d71501810c37f269d002fb/agno-2.6.6.tar.gz", hash = "sha256:c8767ff7528a4f8b7aa8c0543592c3b9cc3c2e3f5a2852555a1c493408df3acf", size = 2025094, upload-time = "2026-05-14T07:35:01.598Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/24/49f7ddba0b0bad299fd632b8d6d67894ed522cf732c902b7c64c1352d2f9/agno-1.8.4-py3-none-any.whl", hash = "sha256:fbdf1c8b760f566def51e5f2bbac7bf2a7ad12b8758cbf7d5f3ee6ee23079575", size = 995048, upload-time = "2025-09-25T18:39:50.417Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/d1/1a9078840c00cd2b6a2968dd11cc107c72290424ff7dbd4baf9a87617ac3/agno-2.6.6-py3-none-any.whl", hash = "sha256:ba8795e020d2a036af312734c1a796b5064466d4c45ab6d64ea51ec5ec2b2cd7", size = 2405077, upload-time = "2026-05-14T07:34:59.063Z" },
 ]
 
 [[package]]
